@@ -174,7 +174,7 @@ func OpenL2CAPCoc(addr bluetooth.Address, psm uint64) (*L2CAPSocket, error) {
 	socketPtr := C.malloc(C.sizeof_int)
 	defer C.free(unsafe.Pointer(socketPtr))
 
-	if err := C.l2cap_dial(cAddr, cPsm, socketPtr); err != 0 {
+	if err := C.l2cap_dial(cAddr, cPsm, (*C.int)(socketPtr)); err != 0 {
 		return nil, fmt.Errorf("error connecting")
 	}
 	return (*L2CAPSocket)(socketPtr), nil
