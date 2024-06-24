@@ -220,7 +220,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     printf("connected %d %d\n", status, errno);
     if( status != 0 ) {
         perror("uh oh not connected");
-        close(s);
+        close(*out_s);
         s = 0;
         return 1;
     }
