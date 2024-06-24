@@ -221,7 +221,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     if( status != 0 ) {
         perror("uh oh not connected");
         close(*out_s);
-        s = 0;
+        *out_s = 0;
         return 1;
     }
 
