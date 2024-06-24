@@ -93,7 +93,7 @@ static int setopts(int sk, struct l2cap_options *opts)
                             sizeof(opts->imtu));
 }
 
-int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
+int l2cap_dial(const char *address, unsigned int psm, int *out_s)
 {
     struct sockaddr_l2 addr = { 0 };
     struct sockaddr_l2 local_addr = { 0 };
