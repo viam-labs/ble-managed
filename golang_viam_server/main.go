@@ -3,6 +3,7 @@ package main
 
 import (
 	"ble-socks/central"
+	"ble-socks/peripheral"
 	"context"
 	"log"
 
@@ -12,25 +13,30 @@ import (
 func main() {
 	log.Println("Starting main function.")
 
-	viamSVCUUID, err := bluetooth.ParseUUID("00000000-0000-1234-0001-000000000000")
+	viamSVCUUID, err := bluetooth.ParseUUID("918ce61c-199f-419e-b6d5-59883a0049d8")
 	must("parse service ID", err)
-	viamPSMCharUUID, err := bluetooth.ParseUUID("00000000-0000-1234-0001-000000000001")
+	viamSocksProxyMachinePSMCharUUID, err := bluetooth.ParseUUID("ab76ead2-b6e6-4f12-a053-61cd0eed19f9")
+	must("parse characteristic ID", err)
+	viamManagedMachinePSMCharUUID, err := bluetooth.ParseUUID("918ce61c-199f-419e-b6d5-59883a0049d8")
 	must("parse characteristic ID", err)
 
-	viamDeviceName := "TestBT1"
+	viamDeviceName := "mac1.loc1.viam.cloud"
 
-	central := central.NewCentral()
-	err = central.Connect(context.Background(), viamSVCUUID, viamPSMCharUUID, viamDeviceName)
+	periph := peripheral.NewPeripheral()
+	periph.Advertise(viamDeviceName, viamSVCUUID, viamManagedMachinePSMCharUUID)
+
+	cent := central.NewCentral()
+	err = cent.Connect(context.Background(), viamSVCUUID, viamSocksProxyMachinePSMCharUUID, viamDeviceName)
 	must("connect", err)
 	log.Println("Successfully connected.")
 
-	err = central.Write("hello")
+	err = cent.Write("hello")
 	must("write", err)
 	log.Println("Successfully wrote.")
 
 	log.Println("Finished main function.")
 
-	err = central.Read()
+	err = cent.Read()
 	must("read", err)
 	log.Println("Successfully read.")
 }
