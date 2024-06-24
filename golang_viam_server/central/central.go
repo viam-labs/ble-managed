@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -119,7 +118,7 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	// TODO: Understand how to open an L2CAP connection to an already paired
 	// device.
 	log.Println("Sleeping in time for you to disconnect BT connection to phone")
-	time.Sleep(10 * time.Second)
+	time.Sleep(20 * time.Second)
 
 	log.Println("Opening L2CAP CoC to", device.Address.String(), " on PSM", psm)
 	if c.socket, err = OpenL2CAPCoc(device.Address, psm); err != nil {

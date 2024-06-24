@@ -194,7 +194,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
         return 1;
     }
 
-	  // bind socket
+    // bind socket
     local_addr.l2_family = AF_BLUETOOTH;
     local_addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
     bacpy(&local_addr.l2_bdaddr, BDADDR_ANY);
@@ -217,11 +217,14 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
         return 1;
     }
 
+    printf("l2cap_dial has set the socket number to %d", *out_s);
+
     return 0;
 }
 
 int l2cap_write(int s, const char* message) {
     int status;
+    printf("l2cap_write is using the socket number of %d", s);
     printf("sending 1...\n");
     status = send(s, "\x06\x00hello!", 8, 0);
     printf("sent %d\n", status);
@@ -234,6 +237,7 @@ int l2cap_write(int s, const char* message) {
 void l2cap_read(int s) {
     char buf[256] = { 0 };
     printf("reading...\n");
+    printf("l2cap_read is using the socket number of %d", s);
     int readBytes = recv(s, buf, imtu, 0);
     int length = buf[0] | (buf[1] << 8);
     printf("read %d %d %d\n", readBytes, length, errno);
