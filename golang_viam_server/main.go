@@ -13,7 +13,7 @@ import (
 func main() {
 	log.Println("Starting main function.")
 
-	viamSVCUUID, err := bluetooth.ParseUUID("918ce61c-199f-419e-b6d5-59883a0049d8")
+	viamSVCUUID, err := bluetooth.ParseUUID("79cf4eca-116a-4ded-8426-fb83e53bc1d7")
 	must("parse service ID", err)
 	viamSocksProxyMachinePSMCharUUID, err := bluetooth.ParseUUID("ab76ead2-b6e6-4f12-a053-61cd0eed19f9")
 	must("parse characteristic ID", err)
