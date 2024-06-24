@@ -115,6 +115,11 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	}
 	log.Println("Found PSM of", psm)
 
+	// Disconnect GATT layer.
+	if err := device.Disconnect(); err != nil {
+		return err
+	}
+
 	// TODO: Understand how to open an L2CAP connection to an already paired
 	// device.
 	log.Println("Sleeping in time for you to disconnect BT connection to phone")
@@ -124,7 +129,7 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	if c.socket, err = OpenL2CAPCoc(device.Address, psm); err != nil {
 		return err
 	}
-	log.Println("DEBUG: Returned socket number is", c.socket)
+	log.Println("DEBUG: Returned socket number is", *c.socket)
 	defer func() {
 		c.socket.Close()
 	}()
@@ -169,7 +174,7 @@ func OpenL2CAPCoc(addr bluetooth.Address, psm uint64) (*L2CAPSocket, error) {
 	socketPtr := C.malloc(C.sizeof_int)
 	defer C.free(unsafe.Pointer(socketPtr))
 
-	if err := C.l2cap_dial(cAddr, cPsm, (*C.int)(socketPtr)); err != 0 {
+	if err := C.l2cap_dial(cAddr, cPsm, socketPtr); err != 0 {
 		return nil, fmt.Errorf("error connecting")
 	}
 	return (*L2CAPSocket)(socketPtr), nil
