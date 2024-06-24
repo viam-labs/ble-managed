@@ -102,9 +102,9 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     /*char *message = "hello!";*/
 
     // allocate a socket
-    out_s = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
+    *out_s = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
     int level = BT_SECURITY_HIGH;
-    int err = setsockopt(out_s, SOL_BLUETOOTH, BT_SECURITY, &level,
+    int err = setsockopt(*out_s, SOL_BLUETOOTH, BT_SECURITY, &level,
                          sizeof(level));
     if (err == -1) {
         perror("setsockopt1");
@@ -118,7 +118,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     str2ba( address, &addr.l2_bdaddr );
 
     /* Get default options */
-    if (getopts(out_s, &opts, false) < 0) {
+    if (getopts(*out_s, &opts, false) < 0) {
         printf("Can't get default L2CAP options: %s (%d)",
                         strerror(errno), errno);
         return 1;
@@ -133,14 +133,14 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     opts.txwin_size = txwin_size;
     opts.max_tx = max_transmit;
 
-    if (setopts(out_s, &opts) < 0) {
+    if (setopts(*out_s, &opts) < 0) {
         printf("Can't set L2CAP options: %s (%d)",
                             strerror(errno), errno);
         return 1;
     }
 
     if (chan_policy != -1) {
-        if (setsockopt(out_s, SOL_BLUETOOTH, BT_CHANNEL_POLICY,
+        if (setsockopt(*out_s, SOL_BLUETOOTH, BT_CHANNEL_POLICY,
                 &chan_policy, sizeof(chan_policy)) < 0) {
             printf("Can't enable chan policy : %s (%d)",
                             strerror(errno), errno);
@@ -152,7 +152,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     if (linger) {
         struct linger l = { .l_onoff = 1, .l_linger = linger };
 
-        if (setsockopt(out_s, SOL_SOCKET, SO_LINGER, &l, sizeof(l)) < 0) {
+        if (setsockopt(*out_s, SOL_SOCKET, SO_LINGER, &l, sizeof(l)) < 0) {
             printf("Can't enable SO_LINGER: %s (%d)",
                             strerror(errno), errno);
             return 1;
@@ -172,14 +172,14 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     if (secure)
         opt |= L2CAP_LM_SECURE;
 
-    if (setsockopt(out_s, SOL_L2CAP, L2CAP_LM, &opt, sizeof(opt)) < 0) {
+    if (setsockopt(*out_s, SOL_L2CAP, L2CAP_LM, &opt, sizeof(opt)) < 0) {
         printf("Can't set L2CAP link mode: %s (%d)",
                             strerror(errno), errno);
         return 1;
     }
 
     /* Set receive buffer size */
-    if (rcvbuf && setsockopt(out_s, SOL_SOCKET, SO_RCVBUF,
+    if (rcvbuf && setsockopt(*out_s, SOL_SOCKET, SO_RCVBUF,
                         &rcvbuf, sizeof(rcvbuf)) < 0) {
         printf("Can't set socket rcv buf size: %s (%d)",
                             strerror(errno), errno);
@@ -188,7 +188,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
 
     socklen_t optlen;
     optlen = sizeof(rcvbuf);
-    if (getsockopt(out_s, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &optlen) < 0) {
+    if (getsockopt(*out_s, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &optlen) < 0) {
         printf("Can't get socket rcv buf size: %s (%d)",
                             strerror(errno), errno);
         return 1;
@@ -200,14 +200,14 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
     bacpy(&local_addr.l2_bdaddr, BDADDR_ANY);
     local_addr.l2_psm = htobs(psm);
 
-    if (bind(out_s, (struct sockaddr *) &local_addr, sizeof(local_addr)) < 0) {
+    if (bind(*out_s, (struct sockaddr *) &local_addr, sizeof(local_addr)) < 0) {
       perror("bind");
       return 1;
     }
 
     // Set flow ctl mode.
     int mode = 0x80; // or 0x80 if L2CAP_MODE_LE_FLOWCTL not defined
-    err = setsockopt(s, SOL_BLUETOOTH, BT_MODE, &mode, sizeof(mode));
+    err = setsockopt(*out_s, SOL_BLUETOOTH, BT_MODE, &mode, sizeof(mode));
     if (err == -1) {
         perror("setsockopt");
         return 1;
@@ -215,7 +215,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
 
     // connect to server
     printf("connecting...\n");
-    status = connect(s, (struct sockaddr *)&addr, sizeof(addr));
+    status = connect(*out_s, (struct sockaddr *)&addr, sizeof(addr));
 
     printf("connected %d %d\n", status, errno);
     if( status != 0 ) {
@@ -229,12 +229,12 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s) {
 }
 
 int l2cap_write(int s, const char* message) {
+    int status;
     printf("sending 1...\n");
     status = send(s, "\x06\x00hello!", 8, 0);
     printf("sent %d\n", status);
     if( status <= 0 ) {
         perror("uh oh bad write");
-        continue;
     }
     return 0;
 }
