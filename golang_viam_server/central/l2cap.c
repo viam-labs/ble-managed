@@ -24,6 +24,7 @@ static int txwin_size = 1000;
 /* Default Max Transmission */
 static int max_transmit = 30;
 
+/* Other default settings */
 static int rfcmode = 0;
 static int central = 1;
 static int auth = 1;
@@ -99,9 +100,8 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
     struct sockaddr_l2 local_addr = { 0 };
     struct l2cap_options opts;
     int status;
-    /*char *message = "hello!";*/
 
-    // allocate a socket
+    // Allocate a socket.
     *out_s = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
     int level = BT_SECURITY_HIGH;
     int err = setsockopt(*out_s, SOL_BLUETOOTH, BT_SECURITY, &level,
@@ -204,14 +204,6 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
       perror("bind");
       return 1;
     }
-
-    // Set flow ctl mode.
-    /*int mode = 0x80; // or 0x80 if L2CAP_MODE_LE_FLOWCTL not defined*/
-    /*err = setsockopt(*out_s, SOL_BLUETOOTH, BT_MODE, &mode, sizeof(mode));*/
-    /*if (err == -1) {*/
-        /*perror("setsockopt");*/
-        /*return 1;*/
-    /*}*/
 
     // connect to server
     printf("connecting...\n");

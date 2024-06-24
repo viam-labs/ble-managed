@@ -12,6 +12,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"tinygo.org/x/bluetooth"
@@ -33,7 +34,7 @@ func NewCentral() *Central {
 // - a service with the svcUUID provided
 // - a characteristic with the psmCharUUID provided that contains a PSM value
 // - named name
-func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UUID, _ string) error {
+func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UUID, name string) error {
 	// Enable BLE interface.
 	if err := c.adapter.Enable(); err != nil {
 		return err
@@ -44,17 +45,16 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	resultCh := make(chan bluetooth.ScanResult, 1)
 	err := c.adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
 		log.Printf("Found device; address %s, RSSI: %v, name: %s\n", result.Address, result.RSSI, result.LocalName())
-		// debug
-		if strings.HasSuffix(result.LocalName(), "viam.cloud") {
-			log.Printf("viam cloud machine has the following services %+v\n", result.ServiceData())
-		}
-		if !result.HasServiceUUID(svcUUID) {
+		if result.LocalName() != name {
 			return
+		}
+
+		if !result.HasServiceUUID(svcUUID) {
+			log.Fatalf("Device %q is not advertising desired service UUID\n", result.LocalName())
 		}
 		log.Println("Device is target device; attempting to connect...")
 		adapter.StopScan()
 		resultCh <- result
-		//}
 	})
 	if err != nil {
 		return err
@@ -67,13 +67,13 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 		return ctx.Err()
 	}
 
-	log.Println("Connecting to ", result.Address.String(), "...")
+	log.Println("Connecting to", result.Address.String(), "...")
 	device, err := c.adapter.Connect(result.Address, bluetooth.ConnectionParams{})
 	if err != nil {
 		return err
 	}
 
-	log.Println("Connected to ", result.Address.String())
+	log.Println("Connected to", result.Address.String())
 
 	// Find current PSM value under specified service and PSM characteristic.
 	log.Println("Fetching PSM value...")
@@ -84,7 +84,6 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 
 	var targetSVC bluetooth.DeviceService
 	for _, svc := range svcs {
-		// Apparently multiple services can be returned here?
 		if svc.UUID() == svcUUID {
 			targetSVC = svc
 			break
@@ -98,7 +97,6 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 
 	var targetPSMChar bluetooth.DeviceCharacteristic
 	for _, char := range chars {
-		// Apparently multiple chars can be returned here?
 		if char.UUID() == psmCharUUID {
 			targetPSMChar = char
 			break
@@ -116,19 +114,18 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	if err != nil {
 		return err
 	}
-	log.Println("Found PSM of ", psm)
+	log.Println("Found PSM of", psm)
 
-	// Disconnect our device before opening the L2CAP channel. Otherwise we get
-	// "115: Operation in progress".
-	log.Println("Disconnecting GATT device")
-	if err = device.Disconnect(); err != nil {
-		log.Fatalln("Error disconnecting: ", err)
-	}
+	// TODO: Understand how to open an L2CAP connection to an already paired
+	// device.
+	log.Println("Sleeping in time for you to disconnect BT connection to phone")
+	time.Sleep(10 * time.Second)
 
-	log.Println("Opening L2CAP CoC to ", device.Address.String(), " on PSM ", psm)
+	log.Println("Opening L2CAP CoC to", device.Address.String(), " on PSM", psm)
 	if c.socket, err = OpenL2CAPCoc(device.Address, psm); err != nil {
 		return err
 	}
+	log.Println("DEBUG: Returned socket number is", c.socket)
 	defer func() {
 		c.socket.Close()
 	}()

@@ -17,19 +17,19 @@ func main() {
 	must("parse service ID", err)
 	viamSocksProxyMachinePSMCharUUID, err := bluetooth.ParseUUID("ab76ead2-b6e6-4f12-a053-61cd0eed19f9")
 	must("parse characteristic ID", err)
-	//viamManagedMachinePSMCharUUID, err := bluetooth.ParseUUID("918ce61c-199f-419e-b6d5-59883a0049d8")
-	//must("parse characteristic ID", err)
 
-	viamDeviceName := "mac1.loc1.viam.cloud"
-
-	//periph := peripheral.NewPeripheral()
-	//periph.Advertise(viamDeviceName, viamSVCUUID, viamManagedMachinePSMCharUUID)
+	// Hardcode for now (peripheral should return it in the future).
+	viamDeviceName := "d3e535ca.viam.cloud"
 
 	cent := central.NewCentral()
 	err = cent.Connect(context.Background(), viamSVCUUID, viamSocksProxyMachinePSMCharUUID, viamDeviceName)
 	must("connect", err)
 	log.Println("Successfully connected.")
-	defer cent.Close()
+	defer func() {
+		if err := cent.Close(); err != nil {
+			log.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 
 	err = cent.Write("hello")
 	must("write", err)
