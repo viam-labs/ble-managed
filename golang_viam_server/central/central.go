@@ -32,7 +32,7 @@ func NewCentral() *Central {
 // - a service with the svcUUID provided
 // - a characteristic with the psmCharUUID provided that contains a PSM value
 // - named name
-func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UUID, name string) error {
+func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UUID, _ string) error {
 	// Enable BLE interface.
 	if err := c.adapter.Enable(); err != nil {
 		return err
@@ -42,15 +42,15 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	log.Println("Scanning...")
 	resultCh := make(chan bluetooth.ScanResult, 1)
 	err := c.adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
-		log.Printf("Found device; address %s, RSSI: %s, name: %s\n", result.Address, result.RSSI, result.LocalName())
-		if result.LocalName() == name {
-			if !result.HasServiceUUID(svcUUID) {
-				log.Fatalln("Device %q is missing specified svc UUID", result.LocalName())
-			}
-			log.Println("Device is target device; attempting to connect...")
-			adapter.StopScan()
-			resultCh <- result
+		log.Printf("Found device; address %s, RSSI: %v, name: %s\n", result.Address, result.RSSI, result.LocalName())
+		//if result.LocalName() == name {
+		if !result.HasServiceUUID(svcUUID) {
+			return
 		}
+		log.Println("Device is target device; attempting to connect...")
+		adapter.StopScan()
+		resultCh <- result
+		//}
 	})
 	if err != nil {
 		return err
