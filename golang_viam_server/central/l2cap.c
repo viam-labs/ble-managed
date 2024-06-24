@@ -206,12 +206,12 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
     }
 
     // Set flow ctl mode.
-    int mode = 0x80; // or 0x80 if L2CAP_MODE_LE_FLOWCTL not defined
-    err = setsockopt(*out_s, SOL_BLUETOOTH, BT_MODE, &mode, sizeof(mode));
-    if (err == -1) {
-        perror("setsockopt");
-        return 1;
-    }
+    /*int mode = 0x80; // or 0x80 if L2CAP_MODE_LE_FLOWCTL not defined*/
+    /*err = setsockopt(*out_s, SOL_BLUETOOTH, BT_MODE, &mode, sizeof(mode));*/
+    /*if (err == -1) {*/
+        /*perror("setsockopt");*/
+        /*return 1;*/
+    /*}*/
 
     // connect to server
     printf("connecting...\n");
