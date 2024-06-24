@@ -149,6 +149,14 @@ func (c *Central) Read() error {
 	return nil
 }
 
+func (c *Central) Close() error {
+	if c.socket == nil {
+		return fmt.Errorf("central not connected")
+	}
+	c.socket.Close()
+	return nil
+}
+
 // L2CAPSocket is a light wrapper around an int representing a socket.
 type L2CAPSocket int
 
