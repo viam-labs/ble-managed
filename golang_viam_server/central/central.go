@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"unsafe"
 
 	"tinygo.org/x/bluetooth"
@@ -43,7 +44,10 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	resultCh := make(chan bluetooth.ScanResult, 1)
 	err := c.adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
 		log.Printf("Found device; address %s, RSSI: %v, name: %s\n", result.Address, result.RSSI, result.LocalName())
-		//if result.LocalName() == name {
+		// debug
+		if strings.HasSuffix(result.LocalName(), "viam.cloud") {
+			log.Printf("viam cloud machine has the following services %+v\n", result.ServiceData())
+		}
 		if !result.HasServiceUUID(svcUUID) {
 			return
 		}
