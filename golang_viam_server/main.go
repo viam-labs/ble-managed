@@ -31,7 +31,7 @@ func main() {
 		}
 	}()
 
-	err = cent.Write("hello")
+	err = cent.Write("hello!")
 	must("write", err)
 	log.Println("Successfully wrote.")
 

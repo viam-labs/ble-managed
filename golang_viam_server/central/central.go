@@ -185,20 +185,26 @@ func (s *L2CAPSocket) Write(message string) error {
 	cMessage := C.CString(message)
 	defer C.free(unsafe.Pointer(cMessage))
 
-	if err := C.l2cap_write(cSocket, cMessage); err != 0 {
+	if err := C.l2cap_write(cSocket, cMessage); err < 0 {
 		return fmt.Errorf("error writing")
 	}
 	return nil
 }
 
 // Read reads a message from the L2CAP socket.
-func (s *L2CAPSocket) Read() {
+func (s *L2CAPSocket) Read() error {
 	cSocket := C.int(*s)
-	C.l2cap_read(cSocket)
+	if err := C.l2cap_read(cSocket); err < 0 {
+		return fmt.Errorf("error reading")
+	}
+	return nil
 }
 
 // Close closes the L2CAP socket.
-func (s *L2CAPSocket) Close() {
+func (s *L2CAPSocket) Close() error {
 	cSocket := C.int(*s)
-	C.l2cap_close(cSocket)
+	if err := C.l2cap_close(cSocket); err < 0 {
+		return fmt.Errorf("error reading")
+	}
+	return nil
 }
