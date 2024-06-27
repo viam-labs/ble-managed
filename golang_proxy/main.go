@@ -51,6 +51,11 @@ func main() {
 	log.Println("Scanning...")
 	resultCh := make(chan bluetooth.ScanResult, 1)
 	err := adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
+		if ctx.Err() != nil {
+			log.Println("Stopping in-progress bluetooth scan...")
+			adapter.StopScan()
+		}
+
 		log.Printf("Found device; address %s, RSSI: %v, name: %s\n", result.Address, result.RSSI, result.LocalName())
 		if result.LocalName() != managedMachineName {
 			return
@@ -69,7 +74,6 @@ func main() {
 	select {
 	case result = <-resultCh:
 	case <-ctx.Done():
-		log.Println("Stopping in-progress bluetooth scan...")
 		return
 	}
 
