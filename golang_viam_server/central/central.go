@@ -1,18 +1,14 @@
 // Package central allows starting and connecting centrals.
 package central
 
-// #cgo CFLAGS: -g -Wall
-// #cgo LDFLAGS: -lbluetooth
-// #include <stdlib.h>
-// #include "l2cap.h"
 import "C"
 import (
+	"ble-socks/l2cap"
 	"context"
 	"fmt"
 	"log"
 	"strconv"
 	"time"
-	"unsafe"
 
 	"tinygo.org/x/bluetooth"
 )
@@ -20,8 +16,7 @@ import (
 // Central is a central device.
 type Central struct {
 	adapter *bluetooth.Adapter
-
-	socket *L2CAPSocket
+	socket  *l2cap.L2CAPSocket
 }
 
 // NewCentral makes a new central.
@@ -30,10 +25,11 @@ func NewCentral() *Central {
 }
 
 // Connnect opens an L2CAP CoC to a device with:
+// - named deviceName
 // - a service with the svcUUID provided
 // - a characteristic with the psmCharUUID provided that contains a PSM value
-// - named name
-func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UUID, name string) error {
+func (c *Central) Connect(ctx context.Context, deviceName string, svcUUID,
+	psmCharUUID bluetooth.UUID) error {
 	// Enable BLE interface.
 	if err := c.adapter.Enable(); err != nil {
 		return err
@@ -44,7 +40,7 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	resultCh := make(chan bluetooth.ScanResult, 1)
 	err := c.adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
 		log.Printf("Found device; address %s, RSSI: %v, name: %s\n", result.Address, result.RSSI, result.LocalName())
-		if result.LocalName() != name {
+		if result.LocalName() != deviceName {
 			return
 		}
 
@@ -126,14 +122,9 @@ func (c *Central) Connect(ctx context.Context, svcUUID, psmCharUUID bluetooth.UU
 	time.Sleep(20 * time.Second)
 
 	log.Println("Opening L2CAP CoC to", device.Address.String(), " on PSM", psm)
-	if c.socket, err = OpenL2CAPCoc(device.Address, psm); err != nil {
+	if c.socket, err = l2cap.OpenL2CAPCoc(device.Address, psm); err != nil {
 		return err
 	}
-	log.Println("DEBUG: Returned socket number is", *c.socket)
-	defer func() {
-		c.socket.Close()
-	}()
-
 	return nil
 }
 
@@ -146,65 +137,17 @@ func (c *Central) Write(message string) error {
 }
 
 // Read reads a message from the underlying socket.
-func (c *Central) Read() error {
+func (c *Central) Read() (string, error) {
 	if c.socket == nil {
-		return fmt.Errorf("central not connected")
+		return "", fmt.Errorf("central not connected")
 	}
-	c.socket.Read()
-	return nil
+	return c.socket.Read()
 }
 
+// Close closes the underlying socket.
 func (c *Central) Close() error {
 	if c.socket == nil {
 		return fmt.Errorf("central not connected")
 	}
-	c.socket.Close()
-	return nil
-}
-
-// L2CAPSocket is a light wrapper around an int representing a socket.
-type L2CAPSocket int
-
-// OpenL2CAPCoc opens a new L2CAP CoC against the provided address and PSM.
-func OpenL2CAPCoc(addr bluetooth.Address, psm uint64) (*L2CAPSocket, error) {
-	cAddr := C.CString(addr.String())
-	defer C.free(unsafe.Pointer(cAddr))
-
-	cPsm := C.uint(psm)
-	socketPtr := C.malloc(C.sizeof_int)
-
-	if err := C.l2cap_dial(cAddr, cPsm, (*C.int)(socketPtr)); err != 0 {
-		return nil, fmt.Errorf("error connecting")
-	}
-	return (*L2CAPSocket)(socketPtr), nil
-}
-
-// Write writes a message to the L2CAP socket.
-func (s *L2CAPSocket) Write(message string) error {
-	cSocket := C.int(*s)
-	cMessage := C.CString(message)
-	defer C.free(unsafe.Pointer(cMessage))
-
-	if err := C.l2cap_write(cSocket, cMessage); err < 0 {
-		return fmt.Errorf("error writing")
-	}
-	return nil
-}
-
-// Read reads a message from the L2CAP socket.
-func (s *L2CAPSocket) Read() error {
-	cSocket := C.int(*s)
-	if err := C.l2cap_read(cSocket); err < 0 {
-		return fmt.Errorf("error reading")
-	}
-	return nil
-}
-
-// Close closes the L2CAP socket.
-func (s *L2CAPSocket) Close() error {
-	cSocket := C.int(*s)
-	if err := C.l2cap_close(cSocket); err < 0 {
-		return fmt.Errorf("error reading")
-	}
-	return nil
+	return c.socket.Close()
 }

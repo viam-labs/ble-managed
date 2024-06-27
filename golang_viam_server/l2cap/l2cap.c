@@ -201,8 +201,8 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
     local_addr.l2_psm = htobs(psm);
 
     if (bind(*out_s, (struct sockaddr *) &local_addr, sizeof(local_addr)) < 0) {
-      perror("bind");
-      return 1;
+        perror("bind");
+        return 1;
     }
 
     // connect to server
@@ -217,7 +217,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
         return 1;
     }
 
-    printf("l2cap_dial has set the socket number to %d\n", *out_s);
+    printf("DEBUG: l2cap_dial has set the socket number to %d\n", *out_s);
     return 0;
 }
 
@@ -234,7 +234,7 @@ int l2cap_write(int s, const char* message) {
     return 0;
 }
 
-int l2cap_read(int s) {
+int l2cap_read(int s, const char* out_message) {
     printf("l2cap_read is using the socket number of %d\n", s);
     char buf[256] = { 0 };
     printf("reading...\n");

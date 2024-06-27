@@ -2,50 +2,55 @@
 package peripheral
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"tinygo.org/x/bluetooth"
 )
 
+// Peripheral is a peripheral device.
 type Peripheral struct {
 	adapter *bluetooth.Adapter
 	adv     *bluetooth.Advertisement
 }
 
+// NewPeripheral makes a new peripheral.
 func NewPeripheral() *Peripheral {
 	return &Peripheral{bluetooth.DefaultAdapter}
 }
 
-func (p *Peripheral) Advertise(deviceName string, svcUUID, psmCharUUID bluetooth.UUID) error {
+// AdvertiseAndFindMobileDevice finds a mobile device name by advertising:
+// - named deviceName
+// - a service with the svcUUID provided
+// - a characteristic with the psmCharUUID provided that contains a PSM value
+func (p *Peripheral) AdvertiseAndFindMobileDevice(ctx context.Context, deviceName string,
+	svcUUID, psmCharUUID bluetooth.UUID) (string, error) {
 	// Enable BLE interface.
 	if err := p.adapter.Enable(); err != nil {
-		return err
+		return "", err
 	}
 
 	// Define the peripheral device info.
-	adv := p.adapter.DefaultAdvertisement()
-
-	sde := &bluetooth.ServiceDataElement{}
-	bluetooth.Characteristic
-
-	err := adv.Configure(bluetooth.AdvertisementOptions{
+	p.adv = p.adapter.DefaultAdvertisement()
+	err := p.adv.Configure(bluetooth.AdvertisementOptions{
 		LocalName: deviceName,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Start advertising
-	if err := adv.Start(); err != nil {
-		return err
+	log.Println("Advertising...")
+	if err := p.adv.Start(); err != nil {
+		return "", err
 	}
 
-	p.adv = adv
-	log.Println("Now advertising...")
-	return nil
+	// TODO: finish.
+	return "d3e535ca.viam.cloud", nil
 }
 
+// StopAdvertise stops advertising.
 func (p *Peripheral) StopAdvertise() error {
 	if p.adv != nil {
 		return p.adv.Stop()
