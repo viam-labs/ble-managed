@@ -224,7 +224,7 @@ int l2cap_dial(const char *address, unsigned int psm, int *out_s)
 int l2cap_write(int s, const char* message) {
     printf("l2cap_write is using the socket number of %d\n", s);
     int status;
-    printf("writing message s%...\n", message);
+    printf("writing message %s ...\n", message);
     // Hardcode "hello!" for now.
     status = send(s, "\x06\x00hello!", 8, 0);
     printf("sent %d\n", status);
@@ -244,6 +244,7 @@ int l2cap_read(int s, const char* out_message) {
     if (readBytes > 0) {
         printf("really read %.*s\n", length, buf+2);
     }
+    return 0;
 }
 
 int l2cap_close(int s) {

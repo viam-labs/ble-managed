@@ -3,7 +3,7 @@ package main
 
 import (
 	"ble-socks/central"
-	"ble-socks/peripheral"
+	//"ble-socks/peripheral"
 	"context"
 	"log"
 
@@ -35,13 +35,16 @@ func main() {
 	log.Println("Starting main function.")
 
 	// Act as peripheral to receive device name.
-	periph := peripheral.NewPeripheral()
-	mobileDeviceName, err := periph.AdvertiseAndFindMobileDevice(context.Background(),
-		managedMachineName, viamSVCUUID, viamManagedMachinePSMCharUUID)
+	//periph := peripheral.NewPeripheral()
+	//mobileDeviceName, err := periph.AdvertiseAndFindMobileDevice(context.Background(),
+	//managedMachineName, viamSVCUUID, viamManagedMachinePSMCharUUID)
+
+	// TODO: Remove hardcoding.
+	mobileDeviceName := "d3e535ca.viam.cloud"
 
 	// Connect to received device name.
 	cent := central.NewCentral()
-	err = cent.Connect(context.Background(), mobileDeviceName, viamSVCUUID,
+	err := cent.Connect(context.Background(), mobileDeviceName, viamSVCUUID,
 		viamSocksProxyMachinePSMCharUUID)
 	must("connect", err)
 	log.Println("Successfully connected.")

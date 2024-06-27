@@ -44,7 +44,7 @@ func (s *L2CAPSocket) Write(message string) error {
 // Read reads a message from the L2CAP socket.
 func (s *L2CAPSocket) Read() (string, error) {
 	cSocket := C.int(*s)
-	cMessage := C.Cstring("")
+	cMessage := C.CString("")
 	if err := C.l2cap_read(cSocket, cMessage); err != 0 {
 		return "", fmt.Errorf("error reading")
 	}
