@@ -42,11 +42,11 @@ func (p *Peripheral) Advertise(deviceName string, svcUUID, proxyDeviceNameCharUU
 	}
 
 	// Start advertising
-	log.Println("Advertising...")
+	log.Printf("Advertising as %q...\n", deviceName)
 	p.adv = p.adapter.DefaultAdvertisement()
 	p.adv.Configure(bluetooth.AdvertisementOptions{
 		LocalName:    deviceName,
-		ServiceUUIDs: []bluetooth.UUID{proxyDeviceNameCharUUID},
+		ServiceUUIDs: []bluetooth.UUID{svcUUID},
 	})
 	if err := p.adv.Start(); err != nil {
 		return err
