@@ -17,7 +17,7 @@ type Peripheral struct {
 
 // NewPeripheral makes a new peripheral.
 func NewPeripheral() *Peripheral {
-	return &Peripheral{bluetooth.DefaultAdapter}
+	return &Peripheral{adapter: bluetooth.DefaultAdapter}
 }
 
 // AdvertiseAndFindMobileDevice finds a mobile device name by advertising:
