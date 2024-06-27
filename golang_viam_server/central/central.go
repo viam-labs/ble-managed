@@ -24,10 +24,10 @@ func NewCentral() *Central {
 	return &Central{adapter: bluetooth.DefaultAdapter}
 }
 
-// Connnect opens an L2CAP CoC to a device with:
+// Connnect opens an L2CAP CoC to a device:
 // - named deviceName
-// - a service with the svcUUID provided
-// - a characteristic with the psmCharUUID provided that contains a PSM value
+// - with a service with the svcUUID provided
+// - with a characteristic with the psmCharUUID provided that contains a PSM value
 func (c *Central) Connect(ctx context.Context, deviceName string, svcUUID,
 	psmCharUUID bluetooth.UUID) error {
 	// Enable BLE interface.
