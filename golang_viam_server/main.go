@@ -48,8 +48,8 @@ func main() {
 	periph := peripheral.NewPeripheral(ctx)
 	err := periph.Advertise(managedMachineName, viamSVCUUID, viamSOCKSProxyMachineNameCharUUID)
 	proxyDeviceName, err := periph.ProxyDeviceName()
-	log.Print("Found proxy device name %q\n", proxyDeviceName)
 	must("find proxy device name", err)
+	log.Printf("Found proxy device name %q\n", proxyDeviceName)
 	must("stop advertising", periph.StopAdvertise())
 
 	// Connect to received proxy device name.
