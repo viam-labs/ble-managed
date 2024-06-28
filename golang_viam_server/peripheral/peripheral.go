@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"tinygo.org/x/bluetooth"
 )
@@ -44,10 +45,11 @@ func (p *Peripheral) Advertise(deviceName string, svcUUID, proxyDeviceNameCharUU
 	// Start advertising
 	log.Printf("Advertising as %q...\n", deviceName)
 	p.adv = p.adapter.DefaultAdvertisement()
-	mde := bluetooth.ManufacturerDataElement{0xffff, []byte("empty")} // "testing" companyID.
+	mde := bluetooth.ManufacturerDataElement{uint16(0xffff), []byte("empty")} // "testing" companyID.
 	p.adv.Configure(bluetooth.AdvertisementOptions{
-		LocalName:        deviceName,
-		ServiceUUIDs:     []bluetooth.UUID{svcUUID},
+		LocalName: deviceName,
+		//ServiceUUIDs:     []bluetooth.UUID{svcUUID},
+		Interval:         bluetooth.NewDuration(1280 * time.Millisecond),
 		ManufacturerData: []bluetooth.ManufacturerDataElement{mde},
 	})
 	if err := p.adv.Start(); err != nil {
