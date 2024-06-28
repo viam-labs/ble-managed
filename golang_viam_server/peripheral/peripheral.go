@@ -44,7 +44,7 @@ func (p *Peripheral) Advertise(deviceName string, svcUUID, proxyDeviceNameCharUU
 	// Start advertising
 	log.Printf("Advertising as %q...\n", deviceName)
 	p.adv = p.adapter.DefaultAdvertisement()
-	mde := bluetooth.ManufacturerDataElement{CompanyID: 0xffff} // testing
+	mde := bluetooth.ManufacturerDataElement{0xffff, []byte("empty")} // "testing" companyID.
 	p.adv.Configure(bluetooth.AdvertisementOptions{
 		LocalName:        deviceName,
 		ServiceUUIDs:     []bluetooth.UUID{svcUUID},
