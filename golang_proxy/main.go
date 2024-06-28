@@ -105,8 +105,7 @@ func main() {
 		}
 	}
 
-	_, err = targetProxyMachineNameChar.WriteWithoutResponse([]byte(
-		proxyMachineName))
+	_, err = targetProxyMachineNameChar.Write([]byte(proxyMachineName))
 	must("write to characteristic", err)
 
 	log.Println("Successfully wrote to proxy device name characteristic")
