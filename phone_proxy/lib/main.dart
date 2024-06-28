@@ -1,6 +1,5 @@
 // ignore_for_file: avoid_print, public_member_api_docs
 import 'dart:async';
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:ble/ble.dart';
@@ -20,7 +19,7 @@ var machineToManage = 'mac1.loc1.viam.cloud';
 
 const viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
 const viamSocksProxyPSMCharUUID = 'ab76ead2-b6e6-4f12-a053-61cd0eed19f9';
-const viamManagedMachinePSMCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
+const viamManagedMachineNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
 
 void main() {
   runZoned(
@@ -120,7 +119,7 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
             .firstWhere((svc) => svc!.id == viamSvcUUID, orElse: () => null)
             ?.characteristics
             .cast<BleCharacteristic?>()
-            .firstWhere((char) => char!.id == viamManagedMachinePSMCharUUID);
+            .firstWhere((char) => char!.id == viamManagedMachineNameCharUUID);
         if (char == null) {
           print('did not find needed PSM char after discovery');
           await Future<void>.delayed(const Duration(seconds: 1));
@@ -130,52 +129,14 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
           return;
         }
 
-        Uint8List? val;
         try {
-          val = await char.read();
+          await char.write(Uint8List.fromList(deviceName.codeUnits));
         } catch (error) {
           print(
-              'error reading characteristic $error; disconnecting from machine and trying again');
+              'error writing characteristic $error; disconnecting from machine and trying again');
           await periph.disconnect();
           unawaited(manageMachine(bleCentral, machineName));
           return;
-        }
-        final psm = int.parse(utf8.decode(val!));
-        print('will connect to management channel on psm: $psm');
-
-        final L2CapChannel chan;
-        try {
-          chan = await periph.connectToL2CapChannel(psm);
-          print('connected');
-        } catch (error) {
-          print(
-              'error connecting $error; disconnecting from machine and trying again');
-          await periph.disconnect();
-          unawaited(manageMachine(bleCentral, machineName));
-          return;
-        }
-
-        var successful = false;
-        try {
-          // all we will write is a length prefix encoded string that is our device name
-          final encodedDeviceName = Uint8List(1 + deviceName.length);
-          encodedDeviceName.buffer.asByteData().setUint8(0, deviceName.length);
-          encodedDeviceName.setAll(1, deviceName.codeUnits);
-          await chan.write(encodedDeviceName);
-          print('wrote our device name ($deviceName)');
-          successful = true;
-
-          // give the device some time to process
-          await Future<void>.delayed(const Duration(seconds: 5));
-        } catch (error) {
-          print(
-              'error writing our device name: $error; disconnecting from machine and trying again');
-        } finally {
-          await chan.close();
-          await periph.disconnect();
-          if (!successful) {
-            unawaited(manageMachine(bleCentral, machineName));
-          }
         }
       }).catchError((error) {
         print('error connecting $error; will try again');
