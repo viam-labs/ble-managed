@@ -42,5 +42,6 @@ async fn main() -> bluer::Result<()> {
     println!("Received: {}", String::from_utf8_lossy(&message_buf));
 
     println!("Done");
+    stream.shutdown().await.expect("shutdown failed");
     Ok(())
 }
