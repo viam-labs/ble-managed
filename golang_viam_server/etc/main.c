@@ -9,10 +9,6 @@
 #include <errno.h>
 #include <signal.h>
 
-void INThandler(int);
-
-int s = 0;
-
 /* Default mtu */
 static int imtu = 2048;
 static int omtu = 2048;
@@ -26,6 +22,7 @@ static int txwin_size = 1000;
 /* Default Max Transmission */
 static int max_transmit = 30;
 
+/* Other default settings */
 static int rfcmode = 0;
 static int central = 1;
 static int auth = 1;
@@ -95,17 +92,14 @@ static int setopts(int sk, struct l2cap_options *opts)
                             sizeof(opts->imtu));
 }
 
-int main(int argc, char **argv)
+int main()
 {
-    signal(SIGINT, INThandler);
     struct sockaddr_l2 addr = { 0 };
     struct sockaddr_l2 local_addr = { 0 };
     struct l2cap_options opts;
-    int status;
-    char *message = "hello!";
-    char dest[18] = "7B:0A:90:17:4F:FC";
+    int s, status;
 
-    // allocate a socket
+    // Allocate a socket.
     s = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
     int level = BT_SECURITY_HIGH;
     int err = setsockopt(s, SOL_BLUETOOTH, BT_SECURITY, &level,
@@ -115,13 +109,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    
-
     // set the connection parameters (who to connect to)
     addr.l2_family = AF_BLUETOOTH;
-    addr.l2_psm = htobs(192); // FILLIN
+    addr.l2_psm = htobs(192);
     addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
-    str2ba( dest, &addr.l2_bdaddr );
+    const char *address = "40:1E:BB:7B:EB:CF";
+    str2ba( address, &addr.l2_bdaddr );
 
     /* Get default options */
     if (getopts(s, &opts, false) < 0) {
@@ -200,22 +193,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-	// bind socket
+    // bind socket
     local_addr.l2_family = AF_BLUETOOTH;
     local_addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
     bacpy(&local_addr.l2_bdaddr, BDADDR_ANY);
     local_addr.l2_psm = htobs(192);
 
     if (bind(s, (struct sockaddr *) &local_addr, sizeof(local_addr)) < 0) {
-      perror("bind");
-      return 1;
-    }
-
-    // Set flow ctl mode.
-    int mode = 0x80; // or 0x80 if L2CAP_MODE_LE_FLOWCTL not defined
-    err = setsockopt(s, SOL_BLUETOOTH, BT_MODE, &mode, sizeof(mode));
-    if (err == -1) {
-        perror("setsockopt");
+        perror("bind");
         return 1;
     }
 
@@ -231,40 +216,39 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    char buf[2048] = { 0 };
-    for (int i = 0; i < 50; i++) {
-        printf("reading...\n");
-        int readBytes = recv(s, buf, imtu, 0);
-        int length = buf[0] | (buf[1] << 8);
-        printf("read %d %d %d\n", readBytes, length, errno);
-        if (readBytes > 0) {
-            printf("really read %.*s\n", length, buf+2);
-        }
+    printf("DEBUG: l2cap_dial has set the socket number to %d\n", s);
 
-        printf("sleeping...\n");
-        sleep(4);
-        printf("slept...\n");
-
-        printf("sending 1...\n");
-        status = send(s, "\x06\x00hello!", 8, 0);
-        printf("sent %d\n", status);
-        if( status <= 0 ) {
-            perror("uh oh bad write");
-            continue;
-        }
+    printf("l2cap_write is using the socket number of %d\n", s);
+    // Hardcode "hello!" for now.
+    status = send(s, "\x06\x00hello!", 8, 0);
+    printf("sent %d\n", status);
+    if( status <= 0 ) {
+        perror("uh oh bad write");
     }
 
-    close(s);
-    s = 0;
+    printf("l2cap_read is using the socket number of %d\n", s);
+    char buf[256] = { 0 };
+    printf("reading...\n");
+    int readBytes = recv(s, buf, imtu, 0);
+    int length = buf[0] | (buf[1] << 8);
+    printf("read %d %d %d\n", readBytes, length, errno);
+    if (readBytes > 0) {
+        printf("really read %.*s\n", length, buf+2);
+    }
 
-    return 1;
-}
+    printf("closing socket\n");
+    status = close(s);
+    if (status < 0) {
+	    perror("uh oh bad close");
+	    return 1;
+    }
 
-void  INThandler(int sig)
-{
-     if (s != 0) {
-        printf("closing socket %d\n", s);
-        close(s);
-     }
-     exit(1);
+    status = system("bluetoothctl disconnect");
+    if (status < 0) {
+	    perror("uh oh bad disconnect");
+	    return 1;
+    }
+
+    printf("all done\n");
+    return 0;
 }
