@@ -3,7 +3,7 @@
 
 use bluer::{
     l2cap::{SocketAddr, Stream},
-    AdapterEvent, Address, AddressType, Device,
+    AdapterEvent, Address, AddressType, Device, DeviceEvent, DeviceProperty,
 };
 use futures::{pin_mut, StreamExt};
 use std::time::Duration;
@@ -20,7 +20,6 @@ const VIAM_SERVICE_UUID: uuid::Uuid = uuid!("79cf4eca-116a-4ded-8426-fb83e53bc1d
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
 
 async fn find_address_and_psm() -> bluer::Result<(Device, u16)> {
-    let session = bluer::Session::new().await?;
     let adapter = session.default_adapter().await?;
     adapter.set_powered(true).await?;
 
@@ -100,7 +99,7 @@ async fn find_address_and_psm() -> bluer::Result<(Device, u16)> {
 }
 
 async fn run_l2cap(target_addr: Address, psm: u16) -> bluer::Result<()> {
-    let target_sa = SocketAddr::new(target_addr, AddressType::LeRandom, psm);
+    let target_sa = SocketAddr::new(target_addr, AddressType::LePublic, psm);
 
     println!("Connecting to {:?}", &target_sa);
     let mut stream = Stream::connect(target_sa).await.expect("connection failed");
@@ -137,9 +136,21 @@ async fn main() -> bluer::Result<()> {
         .await
         .expect("finding address and psm failed");
 
-    run_l2cap(device.address(), psm)
-        .await
-        .expect("opening l2cap socket failed");
+    let events = device.events().await.expect("bad device stream");
+    pin_mut!(events);
+    while let Some(evt) = events.next().await {
+        match evt {
+            DeviceEvent::PropertyChanged(prop) => match prop {
+                DeviceProperty::Address(addr) => {
+                    println!("    Address change event detected");
+                    run_l2cap(addr, psm)
+                        .await
+                        .expect("opening l2cap socket failed");
+                }
+                _ => (),
+            },
+        }
+    }
 
     match device.disconnect().await {
         Ok(()) => println!("    Device disconnected"),
