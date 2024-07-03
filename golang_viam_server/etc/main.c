@@ -9,6 +9,31 @@
 #include <errno.h>
 #include <signal.h>
 
+/* Default mtu */
+static int imtu = 2048;
+static int omtu = 2048;
+
+/* Default FCS option */
+static int fcs = 0x01;
+
+/* Default Transmission Window */
+static int txwin_size = 1000;
+
+/* Default Max Transmission */
+static int max_transmit = 30;
+
+/* Other default settings */
+static int rfcmode = 0;
+static int central = 1;
+static int auth = 1;
+static int encr = 1;
+static int secure = 1;
+static int linger = 1;
+static int reliable = 1;
+static int rcvbuf = 2048;
+static int chan_policy = -1;
+static int bdaddr_type = 0;
+
 static int getopts(int sk, struct l2cap_options *opts, bool connected)
 {
     socklen_t optlen;
@@ -72,7 +97,7 @@ int main()
     struct sockaddr_l2 addr = { 0 };
     struct sockaddr_l2 local_addr = { 0 };
     struct l2cap_options opts;
-    int status;
+    int s, status;
 
     // Allocate a socket.
     s = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
@@ -88,7 +113,7 @@ int main()
     addr.l2_family = AF_BLUETOOTH;
     addr.l2_psm = htobs(192);
     addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
-    const char *address = "FILLIN";
+    const char *address = "40:1E:BB:7B:EB:CF";
     str2ba( address, &addr.l2_bdaddr );
 
     /* Get default options */
@@ -172,7 +197,7 @@ int main()
     local_addr.l2_family = AF_BLUETOOTH;
     local_addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
     bacpy(&local_addr.l2_bdaddr, BDADDR_ANY);
-    local_addr.l2_psm = htobs(psm);
+    local_addr.l2_psm = htobs(192);
 
     if (bind(s, (struct sockaddr *) &local_addr, sizeof(local_addr)) < 0) {
         perror("bind");
@@ -194,8 +219,6 @@ int main()
     printf("DEBUG: l2cap_dial has set the socket number to %d\n", s);
 
     printf("l2cap_write is using the socket number of %d\n", s);
-    int status;
-    printf("writing message %s ...\n", message);
     // Hardcode "hello!" for now.
     status = send(s, "\x06\x00hello!", 8, 0);
     printf("sent %d\n", status);
@@ -213,5 +236,19 @@ int main()
         printf("really read %.*s\n", length, buf+2);
     }
 
+    printf("closing socket\n");
+    status = close(s);
+    if (status < 0) {
+	    perror("uh oh bad close");
+	    return 1;
+    }
+
+    status = system("bluetoothctl disconnect");
+    if (status < 0) {
+	    perror("uh oh bad disconnect");
+	    return 1;
+    }
+
+    printf("all done\n");
     return 0;
 }
