@@ -3,7 +3,7 @@
 
 use bluer::{
     l2cap::{SocketAddr, Stream},
-    AdapterEvent, Address, AddressType, Device, DeviceEvent, DeviceProperty,
+    AdapterEvent, Address, AddressType, Device,
 };
 use futures::{pin_mut, StreamExt};
 use std::time::Duration;
@@ -19,10 +19,7 @@ const VIAM_SERVICE_UUID: uuid::Uuid = uuid!("79cf4eca-116a-4ded-8426-fb83e53bc1d
 /// Characteristic UUID for GATT example.
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
 
-async fn find_address_and_psm() -> bluer::Result<(Device, u16)> {
-    let adapter = session.default_adapter().await?;
-    adapter.set_powered(true).await?;
-
+async fn find_address_and_psm(adapter: &bluer::Adapter) -> bluer::Result<(Device, u16)> {
     println!(
         "Discovering on Bluetooth adapter {} with address {}\n",
         adapter.name(),
@@ -132,25 +129,40 @@ async fn run_l2cap(target_addr: Address, psm: u16) -> bluer::Result<()> {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> bluer::Result<()> {
-    let (device, psm) = find_address_and_psm()
+    let session = bluer::Session::new().await?;
+    let adapter = session.default_adapter().await?;
+    adapter.set_powered(true).await?;
+
+    let (device, psm) = find_address_and_psm(&adapter)
         .await
         .expect("finding address and psm failed");
 
-    let events = device.events().await.expect("bad device stream");
-    pin_mut!(events);
-    while let Some(evt) = events.next().await {
-        match evt {
-            DeviceEvent::PropertyChanged(prop) => match prop {
-                DeviceProperty::Address(addr) => {
-                    println!("    Address change event detected");
-                    run_l2cap(addr, psm)
-                        .await
-                        .expect("opening l2cap socket failed");
-                }
-                _ => (),
-            },
-        }
+    //let events = device.events().await.expect("bad device stream");
+    //pin_mut!(events);
+    //while let Some(evt) = events.next().await {
+    //match evt {
+    //DeviceEvent::PropertyChanged(prop) => match prop {
+    //DeviceProperty::Address(addr) => {
+    //println!("    Address change event detected");
+    //}
+    //_ => (),
+    //},
+    //}
+    //}
+
+    match device.disconnect().await {
+        Ok(()) => println!("    Device disconnected"),
+        Err(err) => println!("    Device disconnection failed: {}", &err),
     }
+
+    match adapter.remove_device(device.address()).await {
+        Ok(()) => println!("    Device removed"),
+        Err(err) => println!("    Device removal failed: {}", &err),
+    }
+
+    run_l2cap(device.address(), psm)
+        .await
+        .expect("opening l2cap socket failed");
 
     match device.disconnect().await {
         Ok(()) => println!("    Device disconnected"),
