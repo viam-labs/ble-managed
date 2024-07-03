@@ -1,0 +1,8 @@
+[package]
+name = "rust_viam_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bluer = { version = "0.17.2", features = ["bluetoothd", "l2cap"] }
+tokio = "1.38.0"
