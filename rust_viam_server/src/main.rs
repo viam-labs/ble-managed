@@ -150,14 +150,9 @@ async fn main() -> bluer::Result<()> {
     //}
     //}
 
-    match device.disconnect().await {
-        Ok(()) => println!("    Device disconnected"),
-        Err(err) => println!("    Device disconnection failed: {}", &err),
-    }
-
-    match adapter.remove_device(device.address()).await {
-        Ok(()) => println!("    Device removed"),
-        Err(err) => println!("    Device removal failed: {}", &err),
+    match device.set_trusted(true).await {
+        Ok(()) => println!("    Device trusted"),
+        Err(err) => println!("    Device trust failed: {}", &err),
     }
 
     run_l2cap(device.address(), psm)
