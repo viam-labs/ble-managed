@@ -155,6 +155,18 @@ async fn main() -> bluer::Result<()> {
         Err(err) => println!("    Device trust failed: {}", &err),
     }
 
+    // Check if device is actually trusted.
+    match device.is_trusted().await {
+        Ok(trusted) => match trusted {
+            true => println!("     Device is actually trusted"),
+            false => println!("     Device is NOT actually trusted"),
+        },
+        Err(err) => println!("    Device get trust failed: {}", &err),
+    }
+
+    println!("    Sleeping; Trust the device now!");
+    std::thread::sleep(std::time::Duration::from_secs(10));
+
     run_l2cap(device.address(), psm)
         .await
         .expect("opening l2cap socket failed");
