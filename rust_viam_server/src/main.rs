@@ -96,7 +96,7 @@ async fn find_address_and_psm(adapter: &bluer::Adapter) -> bluer::Result<(Device
 }
 
 async fn run_l2cap(target_addr: Address, psm: u16) -> bluer::Result<()> {
-    let target_sa = SocketAddr::new(target_addr, AddressType::LePublic, psm);
+    let target_sa = SocketAddr::new(target_addr, AddressType::LeRandom, psm);
 
     println!("Connecting to {:?}", &target_sa);
     let mut stream = Stream::connect(target_sa).await.expect("connection failed");
@@ -162,6 +162,11 @@ async fn main() -> bluer::Result<()> {
             false => println!("     Device is NOT actually trusted"),
         },
         Err(err) => println!("    Device get trust failed: {}", &err),
+    }
+
+    match device.disconnect().await {
+        Ok(()) => println!("    Device disconnected"),
+        Err(err) => println!("    Device disconnection failed: {}", &err),
     }
 
     println!("    Sleeping; Trust the device now!");
