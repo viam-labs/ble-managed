@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 bluer = { path = "../../bluer/bluer", features = ["bluetoothd", "l2cap"] }
 futures = "0.3.30"
+log = "0.4.22"
 tokio = "1.38.0"
 uuid = "1.9.1"

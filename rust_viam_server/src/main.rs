@@ -1,6 +1,9 @@
 //! Scans for BLE device with Viam service UUID and PSM char, and opens L2CAP
 //! socket over that advertised PSM.
 
+mod central;
+mod peripheral;
+
 use bluer::{
     l2cap::{SocketAddr, Stream},
     AdapterEvent, Address, AddressType, Device,
