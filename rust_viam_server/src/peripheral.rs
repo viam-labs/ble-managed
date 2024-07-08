@@ -31,6 +31,7 @@ pub async fn advertise_and_find_proxy_device_name(
     svc_uuid: Uuid,
     proxy_device_name_char_uuid: Uuid,
 ) -> bluer::Result<String> {
+    info!("Starting advertise method");
     let mut manufacturer_data = BTreeMap::new();
     manufacturer_data.insert(
         TESTING_MANUFACTURER_ID,
@@ -44,7 +45,7 @@ pub async fn advertise_and_find_proxy_device_name(
         ..Default::default()
     };
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);
-    debug!("Registered advertisement");
+    info!("Registered advertisement");
 
     let (tx, rx) = channel();
     let app = Application {
@@ -60,7 +61,7 @@ pub async fn advertise_and_find_proxy_device_name(
                         async move {
                             // Log possible errors in this block, as only an enum of ReqError can
                             // be returned from here.
-                            debug!(
+                            info!(
                                 "Char write request {:?} with value {:x?}",
                                 &req, &new_value
                             );

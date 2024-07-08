@@ -150,6 +150,8 @@ async fn run_l2cap(target_addr: Address, psm: u16) -> bluer::Result<()> {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> bluer::Result<()> {
+    env_logger::init();
+    info!("Starting main method!");
     let session = bluer::Session::new().await?;
     let adapter = session.default_adapter().await?;
     adapter.set_powered(true).await?;
