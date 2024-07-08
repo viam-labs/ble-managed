@@ -1,10 +1,12 @@
+//! Defines peripheral logic.
+
 use bluer::{
     adv::Advertisement,
     gatt::local::{
         Application, Characteristic, CharacteristicWrite, CharacteristicWriteMethod, ReqError,
         Service,
     },
-    Session,
+    Adapter,
 };
 use futures::FutureExt;
 use log::{debug, error, info};
@@ -12,10 +14,11 @@ use std::{collections::BTreeMap, str::from_utf8, sync::mpsc::channel};
 use uuid::Uuid;
 
 /// Manufacturer ID for LE advertisement (testing ID used for now).
-const MANUFACTURER_ID: u16 = 0xffff;
+const TESTING_MANUFACTURER_ID: u16 = 0xffff;
 
 /// Advertises a peripheral device:
 ///
+/// - with adapter `adapter`
 /// - named `device_name`
 /// - with a service IDed as `svc_uuid`
 /// - with a characteristic IDed as `proxy_device_name_char_uuid`
@@ -23,16 +26,14 @@ const MANUFACTURER_ID: u16 = 0xffff;
 /// Waits for a BLE central to write a UTF8-encoded string to that characteristic and returns the
 /// written value (or an error).
 pub async fn advertise_and_find_proxy_device_name(
+    adapter: &Adapter,
     device_name: String,
     svc_uuid: Uuid,
     proxy_device_name_char_uuid: Uuid,
 ) -> bluer::Result<String> {
-    let session = Session::new().await?;
-    let adapter = session.default_adapter().await?;
-    adapter.set_powered(true).await?;
     let mut manufacturer_data = BTreeMap::new();
     manufacturer_data.insert(
-        MANUFACTURER_ID,
+        TESTING_MANUFACTURER_ID,
         /*arbitrary data */ vec![0x21, 0x22, 0x23, 0x24],
     );
     let le_advertisement = Advertisement {

@@ -16,13 +16,23 @@ use tokio::{
 };
 use uuid::uuid;
 
-/// Service UUID for GATT example.
+/// Name to advertise as this machine.
+const MANAGED_DEVICE_NAME: &str = "mac1.loc1.viam.cloud";
+
+/// Service UUID for advertised local proxy device name characteristic and remote PSM
+/// characteristic.
 const VIAM_SERVICE_UUID: uuid::Uuid = uuid!("79cf4eca-116a-4ded-8426-fb83e53bc1d7");
 
-/// Characteristic UUID for GATT example.
+/// Characteristic UUID for remote PSM.
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
 
-async fn find_address_and_psm(adapter: &bluer::Adapter) -> bluer::Result<(Device, u16)> {
+/// Characteristic UUID for local proxy device name.
+const PROXY_DEVICE_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-59883a0049d8");
+
+async fn find_address_and_psm(
+    adapter: &bluer::Adapter,
+    device_name: String,
+) -> bluer::Result<(Device, u16)> {
     println!(
         "Discovering on Bluetooth adapter {} with address {}\n",
         adapter.name(),
@@ -37,6 +47,14 @@ async fn find_address_and_psm(adapter: &bluer::Adapter) -> bluer::Result<(Device
                 let device = adapter.device(addr)?;
                 let addr = device.address();
                 let uuids = device.uuids().await?.unwrap_or_default();
+
+                // If device is named, do not check for service UUID unless it matches name written
+                // to previously advertised characteristic.
+                if let Some(name) = device.name().await? {
+                    if name != device_name {
+                        continue;
+                    }
+                }
 
                 if uuids.contains(&VIAM_SERVICE_UUID) {
                     println!("    Device {addr} provides our service!");
@@ -136,44 +154,27 @@ async fn main() -> bluer::Result<()> {
     let adapter = session.default_adapter().await?;
     adapter.set_powered(true).await?;
 
-    let (device, psm) = find_address_and_psm(&adapter)
+    let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
+        &adapter,
+        MANAGED_DEVICE_NAME.to_string(),
+        VIAM_SERVICE_UUID,
+        PROXY_DEVICE_NAME_CHAR_UUID,
+    )
+    .await?;
+
+    let (device, psm) = find_address_and_psm(&adapter, proxy_device_name)
         .await
         .expect("finding address and psm failed");
-
-    //let events = device.events().await.expect("bad device stream");
-    //pin_mut!(events);
-    //while let Some(evt) = events.next().await {
-    //match evt {
-    //DeviceEvent::PropertyChanged(prop) => match prop {
-    //DeviceProperty::Address(addr) => {
-    //println!("    Address change event detected");
-    //}
-    //_ => (),
-    //},
-    //}
-    //}
 
     match device.set_trusted(true).await {
         Ok(()) => println!("    Device trusted"),
         Err(err) => println!("    Device trust failed: {}", &err),
     }
 
-    // Check if device is actually trusted.
-    match device.is_trusted().await {
-        Ok(trusted) => match trusted {
-            true => println!("     Device is actually trusted"),
-            false => println!("     Device is NOT actually trusted"),
-        },
-        Err(err) => println!("    Device get trust failed: {}", &err),
-    }
-
     match device.disconnect().await {
         Ok(()) => println!("    Device disconnected"),
         Err(err) => println!("    Device disconnection failed: {}", &err),
     }
-
-    println!("    Sleeping; Trust the device now!");
-    std::thread::sleep(std::time::Duration::from_secs(10));
 
     run_l2cap(device.address(), psm)
         .await
