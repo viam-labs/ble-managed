@@ -8,5 +8,5 @@ bluer = { path = "../../bluer/bluer", features = ["bluetoothd", "l2cap"] }
 env_logger = "0.11.3"
 futures = "0.3.30"
 log = "0.4.22"
-tokio = "1.38.0"
+tokio = { version = "1.38.0", features = ["io-std"] }
 uuid = "1.9.1"

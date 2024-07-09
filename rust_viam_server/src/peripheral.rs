@@ -3,14 +3,15 @@
 use bluer::{
     adv::Advertisement,
     gatt::local::{
-        Application, Characteristic, CharacteristicRead, CharacteristicWrite,
-        CharacteristicWriteMethod, ReqError, Service,
+        characteristic_control, Application, Characteristic, CharacteristicControlEvent,
+        CharacteristicWrite, CharacteristicWriteMethod, Service,
     },
     Adapter,
 };
-use futures::FutureExt;
-use log::{debug, error, info};
-use std::{collections::BTreeMap, str::from_utf8, sync::mpsc::channel};
+use futures::{pin_mut, StreamExt};
+use log::{debug, info};
+use std::{collections::BTreeMap, str::from_utf8};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use uuid::Uuid;
 
 /// Manufacturer ID for LE advertisement (testing ID used for now).
@@ -41,61 +42,22 @@ pub async fn advertise_and_find_proxy_device_name(
         service_uuids: vec![svc_uuid].into_iter().collect(),
         manufacturer_data,
         discoverable: Some(true),
-        local_name: Some(device_name),
+        local_name: Some(device_name.clone()),
         ..Default::default()
     };
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);
     info!("Registered advertisement");
 
-    let (tx, rx) = channel();
+    let (char_control, _char_handle) = characteristic_control();
     let app = Application {
         services: vec![Service {
             uuid: svc_uuid,
             primary: true,
             characteristics: vec![Characteristic {
                 uuid: proxy_device_name_char_uuid,
-                read: Some(CharacteristicRead {
-                    read: true,
-                    fun: Box::new(move |_req| {
-                        info!("Got a read request!");
-                        let s = "hello there".to_string();
-                        async move { Ok(s.into_bytes()) }.boxed()
-                    }),
-                    ..Default::default()
-                }),
                 write: Some(CharacteristicWrite {
-                    write: true,
-                    reliable_write: true,
-                    authenticated_signed_writes: true,
-                    encrypt_write: true,
-                    encrypt_authenticated_write: true,
-                    secure_write: true,
-                    method: CharacteristicWriteMethod::Fun(Box::new(move |new_value, req| {
-                        debug!("Actually got a write");
-                        let tx = tx.clone();
-                        async move {
-                            // Log possible errors in this block, as only an enum of ReqError can
-                            // be returned from here.
-                            info!(
-                                "Char write request {:?} with value {:x?}",
-                                &req, &new_value
-                            );
-                            match from_utf8(&new_value) {
-                                Ok(proxy_device_name_str) => {
-                                    if let Err(e) = tx.send(proxy_device_name_str.to_string()) {
-                                        error!("Failed to send proxy device name on channel: {e}");
-                                        return Err(ReqError::Failed);
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Written proxy device name is not a UTF8-encoded string: {e}");
-                                    return Err(ReqError::Failed);
-                                }
-                            }
-                            Ok(())
-                        }
-                        .boxed()
-                    })),
+                    write_without_response: true,
+                    method: CharacteristicWriteMethod::Io,
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -106,13 +68,47 @@ pub async fn advertise_and_find_proxy_device_name(
     };
     let _app_handle = Some(adapter.serve_gatt_application(app).await?);
 
-    info!(
-        "Advertising proxy device name char to be written to. Local device name: {}",
-        adapter.name()
-    );
+    info!("Advertising proxy device name char to be written to. Local device name: {device_name}");
 
-    rx.recv().map_err(|e| bluer::Error {
+    info!("Waiting for proxy device name to be written. Press enter to quit.");
+    let stdin = BufReader::new(tokio::io::stdin());
+    let mut lines = stdin.lines();
+
+    pin_mut!(char_control);
+
+    loop {
+        tokio::select! {
+            _ = lines.next_line() => break,
+            evt = char_control.next() => {
+                match evt {
+                    Some(CharacteristicControlEvent::Write(req)) => {
+                        debug!("Accepting write request event with MTU {}", req.mtu());
+                        let mut read_buf = vec![0; req.mtu()];
+                        let mut reader = req.accept()?;
+                        reader.read(&mut read_buf).await?;
+                        match from_utf8(&read_buf) {
+                                Ok(proxy_device_name_str) => {
+                                    return Ok(proxy_device_name_str.to_string());
+                                }
+                                Err(e) => {
+                                    return Err(bluer::Error {
+                                        kind: bluer::ErrorKind::Failed,
+                                        message: format!("Written proxy device name is not a UTF8-encoded string: {e}"),
+                                    });
+                                }
+                            }
+                    },
+                    Some(CharacteristicControlEvent::Notify(notifier)) => {
+                        debug!("Accepting notify request event with MTU {}", notifier.mtu());
+                    },
+                    None => break,
+                }
+            },
+        }
+    }
+
+    Err(bluer::Error {
         kind: bluer::ErrorKind::Failed,
-        message: format!("{e}"),
+        message: "Failed to collect a proxy device name".to_string(),
     })
 }
