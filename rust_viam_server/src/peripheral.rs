@@ -56,6 +56,11 @@ pub async fn advertise_and_find_proxy_device_name(
                 uuid: proxy_device_name_char_uuid,
                 read: Some(CharacteristicRead {
                     read: true,
+                    fun: Box::new(move |_req| {
+                        info!("Got a read request!");
+                        let s = "hello there".to_string();
+                        async move { Ok(s.into_bytes()) }.boxed()
+                    }),
                     ..Default::default()
                 }),
                 write: Some(CharacteristicWrite {
