@@ -3,8 +3,8 @@
 use bluer::{
     adv::Advertisement,
     gatt::local::{
-        Application, Characteristic, CharacteristicWrite, CharacteristicWriteMethod, ReqError,
-        Service,
+        Application, Characteristic, CharacteristicRead, CharacteristicWrite,
+        CharacteristicWriteMethod, ReqError, Service,
     },
     Adapter,
 };
@@ -54,9 +54,12 @@ pub async fn advertise_and_find_proxy_device_name(
             primary: true,
             characteristics: vec![Characteristic {
                 uuid: proxy_device_name_char_uuid,
+                read: Some(CharacteristicRead {
+                    read: true,
+                    ..Default::default()
+                }),
                 write: Some(CharacteristicWrite {
                     write: true,
-                    write_without_response: true,
                     reliable_write: true,
                     authenticated_signed_writes: true,
                     encrypt_write: true,
