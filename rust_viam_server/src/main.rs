@@ -6,9 +6,10 @@ mod peripheral;
 
 use bluer::{
     l2cap::{SocketAddr, Stream},
-    AdapterEvent, Address, AddressType, Device,
+    AdapterEvent, Device,
 };
 use futures::{pin_mut, StreamExt};
+use log::info;
 use std::time::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -116,8 +117,9 @@ async fn find_address_and_psm(
     })
 }
 
-async fn run_l2cap(target_addr: Address, psm: u16) -> bluer::Result<()> {
-    let target_sa = SocketAddr::new(target_addr, AddressType::LeRandom, psm);
+async fn run_l2cap(device: &Device, psm: u16) -> bluer::Result<()> {
+    let addr_type = device.address_type().await?;
+    let target_sa = SocketAddr::new(device.address(), addr_type, psm);
 
     println!("Connecting to {:?}", &target_sa);
     let mut stream = Stream::connect(target_sa).await.expect("connection failed");
@@ -178,7 +180,7 @@ async fn main() -> bluer::Result<()> {
         Err(err) => println!("    Device disconnection failed: {}", &err),
     }
 
-    run_l2cap(device.address(), psm)
+    run_l2cap(&device, psm)
         .await
         .expect("opening l2cap socket failed");
 

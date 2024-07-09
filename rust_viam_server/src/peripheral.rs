@@ -9,7 +9,7 @@ use bluer::{
     Adapter,
 };
 use futures::FutureExt;
-use log::{debug, error, info};
+use log::{error, info};
 use std::{collections::BTreeMap, str::from_utf8, sync::mpsc::channel};
 use uuid::Uuid;
 
@@ -56,6 +56,9 @@ pub async fn advertise_and_find_proxy_device_name(
                 uuid: proxy_device_name_char_uuid,
                 write: Some(CharacteristicWrite {
                     write: true,
+                    encrypt_write: true,
+                    encrypt_authenticated_write: true,
+                    secure_write: true,
                     method: CharacteristicWriteMethod::Fun(Box::new(move |new_value, req| {
                         let tx = tx.clone();
                         async move {
