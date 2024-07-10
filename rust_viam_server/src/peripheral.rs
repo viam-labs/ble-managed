@@ -55,7 +55,7 @@ pub async fn advertise_and_find_proxy_device_name(
             characteristics: vec![Characteristic {
                 uuid: proxy_device_name_char_uuid,
                 write: Some(CharacteristicWrite {
-                    write_without_response: true,
+                    write: true,
                     encrypt_write: true,
                     encrypt_authenticated_write: true,
                     secure_write: true,

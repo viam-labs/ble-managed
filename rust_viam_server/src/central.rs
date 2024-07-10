@@ -2,18 +2,13 @@
 
 use bluer::{
     l2cap::{SocketAddr, Stream},
-    AdapterEvent, Device,
+    Device,
 };
-use futures::{pin_mut, StreamExt};
 use log::{debug, error, info};
-use std::time::Duration;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
 
-/// Finds device and its exposed PSM:
+/// Finds previously paired device and its exposed PSM:
 ///
 /// - with adapter `adapter`
 /// - named `device_name`
@@ -25,83 +20,66 @@ pub async fn find_device_and_psm(
     svc_uuid: Uuid,
     psm_char_uuid: Uuid,
 ) -> bluer::Result<(Device, u16)> {
-    info!(
-        "Discovering on Bluetooth adapter {} with address {}\n",
-        adapter.name(),
-        adapter.address().await?
-    );
-    let discover = adapter.discover_devices().await?;
+    for addr in adapter.device_addresses().await? {
+        let device = adapter.device(addr)?;
+        let addr = device.address();
+        let uuids = device.uuids().await?.unwrap_or_default();
 
-    pin_mut!(discover);
-    while let Some(evt) = discover.next().await {
-        match evt {
-            AdapterEvent::DeviceAdded(addr) => {
-                let device = adapter.device(addr)?;
-                let addr = device.address();
-                let uuids = device.uuids().await?.unwrap_or_default();
+        // If device is named, do not check for service UUID unless it matches name written
+        // to previously advertised characteristic.
+        if let Some(name) = device.name().await? {
+            if name != device_name {
+                continue;
+            }
+        }
 
-                // If device is named, do not check for service UUID unless it matches name written
-                // to previously advertised characteristic.
-                if let Some(name) = device.name().await? {
-                    if name != device_name {
-                        continue;
+        if uuids.contains(&svc_uuid) {
+            info!("Device {addr} provides target service");
+            if !device.is_connected().await? {
+                info!("Connecting to {addr}...");
+                let mut retries = 3;
+                loop {
+                    match device.connect().await {
+                        Ok(()) => break,
+                        Err(err) if retries > 0 => {
+                            error!("Connect error: {}", &err);
+                            retries -= 1;
+                        }
+                        Err(err) => return Err(err),
                     }
                 }
+                info!("Connected");
+            } else {
+                debug!("Already connected");
+            }
 
-                if uuids.contains(&svc_uuid) {
-                    info!("Device {addr} provides target service");
-
-                    sleep(Duration::from_secs(2)).await;
-                    if !device.is_connected().await? {
-                        debug!("Connecting to {addr}...");
-                        let mut retries = 2;
-                        loop {
-                            match device.connect().await {
-                                Ok(()) => break,
-                                Err(err) if retries > 0 => {
-                                    error!("Connect error: {}", &err);
-                                    retries -= 1;
-                                }
-                                Err(err) => return Err(err),
-                            }
-                        }
-                        info!("Connected");
-                    } else {
-                        debug!("Already connected");
-                    }
-
-                    debug!("Enumerating services...");
-                    for service in device.services().await? {
-                        let uuid = service.uuid().await?;
-                        debug!("Service UUID: {}", &uuid);
-                        if uuid == svc_uuid {
-                            info!("Found target service");
-                            for char in service.characteristics().await? {
-                                let uuid = char.uuid().await?;
-                                debug!("Characteristic UUID: {}", &uuid);
-                                if uuid == psm_char_uuid {
-                                    info!("Found target characteristic");
-                                    if char.flags().await?.read {
-                                        debug!("Reading characteristic value");
-                                        let value = char.read().await?;
-                                        debug!("Read value: {:x?}", &value);
-                                        let str_psm = String::from_utf8_lossy(&value);
-                                        match str_psm.parse::<u16>() {
-                                            Ok(psm) => {
-                                                device.set_trusted(true).await?;
-                                                // TODO(needed?)
-                                                device.disconnect().await?;
-                                                return Ok((device, psm));
-                                            }
-                                            Err(e) => {
-                                                return Err(bluer::Error {
-                                                    kind: bluer::ErrorKind::Failed,
-                                                    message: format!(
-                                                        "Found PSM is not a valid u16: {e}"
-                                                    ),
-                                                });
-                                            }
-                                        }
+            debug!("Enumerating services...");
+            for service in device.services().await? {
+                let uuid = service.uuid().await?;
+                debug!("Service UUID: {}", &uuid);
+                if uuid == svc_uuid {
+                    info!("Found target service");
+                    for char in service.characteristics().await? {
+                        let uuid = char.uuid().await?;
+                        debug!("Characteristic UUID: {}", &uuid);
+                        if uuid == psm_char_uuid {
+                            info!("Found target characteristic");
+                            if char.flags().await?.read {
+                                debug!("Reading characteristic value");
+                                let value = char.read().await?;
+                                debug!("Read value: {:x?}", &value);
+                                let str_psm = String::from_utf8_lossy(&value);
+                                match str_psm.parse::<u16>() {
+                                    Ok(psm) => {
+                                        device.set_trusted(true).await?;
+                                        device.disconnect().await?;
+                                        return Ok((device, psm));
+                                    }
+                                    Err(e) => {
+                                        return Err(bluer::Error {
+                                            kind: bluer::ErrorKind::Failed,
+                                            message: format!("Found PSM is not a valid u16: {e}"),
+                                        });
                                     }
                                 }
                             }
@@ -109,7 +87,6 @@ pub async fn find_device_and_psm(
                     }
                 }
             }
-            _ => (),
         }
     }
     Err(bluer::Error {
