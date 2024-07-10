@@ -56,9 +56,6 @@ pub async fn advertise_and_find_proxy_device_name(
                 uuid: proxy_device_name_char_uuid,
                 write: Some(CharacteristicWrite {
                     write: true,
-                    encrypt_write: true,
-                    encrypt_authenticated_write: true,
-                    secure_write: true,
                     method: CharacteristicWriteMethod::Io,
                     ..Default::default()
                 }),
@@ -88,13 +85,11 @@ pub async fn advertise_and_find_proxy_device_name(
                         debug!("Accepting write request event with MTU {}", req.mtu());
                         let mut read_buf = vec![0; req.mtu()];
                         let mut reader = req.accept()?;
-                        reader.read(&mut read_buf).await?;
-                        match from_utf8(&read_buf) {
+                        let num_bytes = reader.read(&mut read_buf).await?;
+                        let trimmed_read_buf = &read_buf[0..num_bytes];
+                        match from_utf8(trimmed_read_buf) {
                                 Ok(proxy_device_name_str) => {
-                                    // Trim whitespace left by buffering to size of MTU.
-                                    let mut proxy_device_name = proxy_device_name_str.to_string();
-                                    proxy_device_name.retain(|c| !c.is_whitespace());
-                                    return Ok(proxy_device_name);
+                                    return Ok(proxy_device_name_str.to_string());
                                 }
                                 Err(e) => {
                                     return Err(bluer::Error {

@@ -46,6 +46,7 @@ pub async fn find_device_and_psm(
                 println!("device_name_char of {ch}");
             }
             if name != device_name {
+                println!("Continuing as {name} doesn't equal {device_name}");
                 continue;
             }
         }
