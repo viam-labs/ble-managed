@@ -36,6 +36,10 @@ async fn main() -> bluer::Result<()> {
     )
     .await?;
 
+    // Restart adapter to sever connection created by mobile device.
+    adapter.set_powered(false).await?;
+    adapter.set_powered(true).await?;
+
     let (device, psm) = central::find_device_and_psm(
         &adapter,
         proxy_device_name,
