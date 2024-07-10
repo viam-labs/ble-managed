@@ -32,7 +32,6 @@ pub async fn advertise_and_find_proxy_device_name(
     svc_uuid: Uuid,
     proxy_device_name_char_uuid: Uuid,
 ) -> bluer::Result<String> {
-    info!("Starting advertise method");
     let mut manufacturer_data = BTreeMap::new();
     manufacturer_data.insert(
         TESTING_MANUFACTURER_ID,
@@ -48,7 +47,7 @@ pub async fn advertise_and_find_proxy_device_name(
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);
     info!("Registered advertisement");
 
-    let (char_control, _char_handle) = characteristic_control();
+    let (char_control, char_handle) = characteristic_control();
     let app = Application {
         services: vec![Service {
             uuid: svc_uuid,
@@ -57,9 +56,13 @@ pub async fn advertise_and_find_proxy_device_name(
                 uuid: proxy_device_name_char_uuid,
                 write: Some(CharacteristicWrite {
                     write_without_response: true,
+                    encrypt_write: true,
+                    encrypt_authenticated_write: true,
+                    secure_write: true,
                     method: CharacteristicWriteMethod::Io,
                     ..Default::default()
                 }),
+                control_handle: char_handle,
                 ..Default::default()
             }],
             ..Default::default()
