@@ -91,7 +91,10 @@ pub async fn advertise_and_find_proxy_device_name(
                         reader.read(&mut read_buf).await?;
                         match from_utf8(&read_buf) {
                                 Ok(proxy_device_name_str) => {
-                                    return Ok(proxy_device_name_str.to_string());
+                                    // Trim whitespace left by buffering to size of MTU.
+                                    let mut proxy_device_name = proxy_device_name_str.to_string();
+                                    proxy_device_name.retain(|c| !c.is_whitespace());
+                                    return Ok(proxy_device_name);
                                 }
                                 Err(e) => {
                                     return Err(bluer::Error {
