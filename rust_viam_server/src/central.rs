@@ -37,16 +37,7 @@ pub async fn find_device_and_psm(
         // If device is named, do not check for service UUID unless it matches name written
         // to previously advertised characteristic.
         if let Some(name) = device.name().await? {
-            let name_chars = name.chars();
-            let device_name_chars = device_name.chars();
-            for ch in name_chars {
-                println!("name_char of {ch}");
-            }
-            for ch in device_name_chars {
-                println!("device_name_char of {ch}");
-            }
             if name != device_name {
-                println!("Continuing as {name} doesn't equal {device_name}");
                 continue;
             }
         }
@@ -90,6 +81,8 @@ pub async fn find_device_and_psm(
                                 match str_psm.parse::<u16>() {
                                     Ok(psm) => {
                                         device.set_trusted(true).await?;
+                                        // Disconnect before sending back to L2CAP layer, as that
+                                        // will create another connection.
                                         device.disconnect().await?;
                                         return Ok((device, psm));
                                     }
