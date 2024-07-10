@@ -26,6 +26,8 @@ async fn main() -> bluer::Result<()> {
 
     let session = bluer::Session::new().await?;
     let adapter = session.default_adapter().await?;
+    // Restart adapter to sever existing connections.
+    adapter.set_powered(false).await?;
     adapter.set_powered(true).await?;
 
     let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
