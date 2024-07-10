@@ -4,6 +4,7 @@ use bluer::{
     l2cap::{SocketAddr, Stream},
     Device,
 };
+use futures::pin_mut;
 use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
@@ -20,7 +21,12 @@ pub async fn find_device_and_psm(
     svc_uuid: Uuid,
     psm_char_uuid: Uuid,
 ) -> bluer::Result<(Device, u16)> {
+    // Call discover_devices to resolve remote names.
+    let _discover = adapter.discover_devices().await?;
+    pin_mut!(_discover);
+
     for addr in adapter.device_addresses().await? {
+        debug!("Looping through {addr}");
         let device = adapter.device(addr)?;
         let addr = device.address();
         let uuids = device.uuids().await?.unwrap_or_default();
