@@ -8,4 +8,5 @@ and can route all SOCKS requests through those proxies.
 
 # Building
 
-Run `make setup` and `make build` to build. Run `make` or `make run` to run.
+Can only build on linux. Run `make setup` (will only try `apt`) and `make build` to build. Run
+`make` or `make run` to run.
