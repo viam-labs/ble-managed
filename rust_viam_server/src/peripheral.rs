@@ -56,6 +56,16 @@ pub async fn advertise_and_find_proxy_device_name(
                 uuid: proxy_device_name_char_uuid,
                 write: Some(CharacteristicWrite {
                     write: true,
+                    // TODO(medium): Encrypt the char. Encrypting will force the mobile device to
+                    // pair with the rock4 upon its initial connection attempt. Encrypting seems to
+                    // sometimes cause write failure when the mobile device and the rock4 are
+                    // already paired (writes are not seen in the select below). Check `btmon` for
+                    // a `WriteResponse` error like unauthenticated. I think we have to `trust` the
+                    // mobile device from the rock4.
+                    //
+                    //encrypt_write: true,
+                    //encrypt_authenticated_write: true,
+                    //secure_write: true,
                     method: CharacteristicWriteMethod::Io,
                     ..Default::default()
                 }),
@@ -78,6 +88,9 @@ pub async fn advertise_and_find_proxy_device_name(
 
     loop {
         tokio::select! {
+            // TODO(low): Add a better select case than waiting for a new stdin line. Ideally, we
+            // are just sensitive to SIGTERM/SIGINT. tokio::main may handle that for us already
+            // but I have not tested.
             _ = lines.next_line() => break,
             evt = char_control.next() => {
                 match evt {
@@ -100,7 +113,7 @@ pub async fn advertise_and_find_proxy_device_name(
                             }
                     },
                     Some(CharacteristicControlEvent::Notify(notifier)) => {
-                        debug!("Accepting notify request event with MTU {}", notifier.mtu());
+                        debug!("Should not happen: accepting notify request event with MTU {}", notifier.mtu());
                     },
                     None => break,
                 }
