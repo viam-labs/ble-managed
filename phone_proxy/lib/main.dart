@@ -1,14 +1,13 @@
 // ignore_for_file: avoid_print, public_member_api_docs
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:ble/ble.dart';
 import 'package:ble/ble_central.dart';
 import 'package:ble/ble_peripheral.dart';
-import 'package:ble/ble_socket.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:socks5_proxy/socks_server.dart';
 
 List<String> lines = [];
 
@@ -19,7 +18,8 @@ var machineToManage = 'mac1.loc1.viam.cloud';
 
 const viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
 const viamSocksProxyPSMCharUUID = 'ab76ead2-b6e6-4f12-a053-61cd0eed19f9';
-const viamManagedMachineNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
+const viamManagedMachineNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d7';
+const viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
 
 void main() {
   runZoned(
@@ -76,9 +76,11 @@ Future<void> initializeProxy(BlePeripheral blePeriph) async {
 
 Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm) async {
   print('advertising self ($deviceName) and publishing SOCKS5 proxy PSM: $psm');
-  await blePeriph
-      .addReadOnlyService(viamSvcUUID, {viamSocksProxyPSMCharUUID: '$psm'});
-  await blePeriph.startAdvertising(deviceName);
+  await blePeriph.addReadOnlyService(viamSvcUUID, {
+    viamSocksProxyNameCharUUID: deviceName,
+    viamSocksProxyPSMCharUUID: '$psm',
+  });
+  await blePeriph.startAdvertising();
 }
 
 Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
@@ -88,15 +90,17 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
     print('serve channel $thisCount as a SOCKS5 server');
-    final socksServerProxy = SocksServer();
-    socksServerProxy.connections.listen((connection) async {
-      print(
-          'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
-      await connection.forward(allowIPv6: true);
-    }).onError(print);
+    // TODO(erd->benji) - remove this line and uncomment the rest when SOCKS is ready
+    await chan.write(Uint8List.fromList("world".codeUnits));
+    //final socksServerProxy = SocksServer();
+    //socksServerProxy.connections.listen((connection) async {
+    //  print(
+    //      'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
+    //  await connection.forward(allowIPv6: true);
+    //}).onError(print);
 
-    unawaited(socksServerProxy
-        .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
+    //unawaited(socksServerProxy
+    //    .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
   }).asFuture();
 }
 
@@ -105,22 +109,46 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
   late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
     (periphInfo) {
-      if (periphInfo.name == machineName) {
-        print('found $machineName; connecting...');
-        deviceSub.cancel();
-      } else {
-        return;
-      }
+      print('got event with ${periphInfo.name}');
       bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
-        print('connected to machine');
+        print('connected to $machineName');
 
-        final char = periph.services
-            .cast<BleService?>()
-            .firstWhere((svc) => svc!.id == viamSvcUUID, orElse: () => null)
-            ?.characteristics
+        final viamSvc = periph.services.cast<BleService?>().firstWhere(
+            (svc) => svc != null && svc.id == viamSvcUUID,
+            orElse: () => null);
+        if (viamSvc == null) {
+          // Note(erd): this could use some retry logic
+          print("viam service missing; disconnecting");
+          return;
+        }
+
+        final periphNameChar = viamSvc.characteristics
             .cast<BleCharacteristic?>()
-            .firstWhere((char) => char!.id == viamManagedMachineNameCharUUID);
-        if (char == null) {
+            .firstWhere((char) =>
+                char != null && char.id == viamManagedMachineNameCharUUID);
+        if (periphNameChar == null) {
+          // Note(erd): this could use some retry logic
+          print(
+              'did not find needed periph name char after discovery; disconnecting');
+          await periph.disconnect();
+          return;
+        }
+
+        final periphName = utf8.decode((await periphNameChar.read())!);
+        if (periphName != machineName) {
+          // Note(erd): this could use some retry logic
+          print('found a different viam machine $periphName; disconnecting');
+          await periph.disconnect();
+          return;
+        }
+
+        deviceSub.cancel();
+
+        final proxyNameChar = viamSvc.characteristics
+            .cast<BleCharacteristic?>()
+            .firstWhere((char) =>
+                char != null && char.id == viamSocksProxyNameCharUUID);
+        if (proxyNameChar == null) {
           print('did not find needed PSM char after discovery');
           await Future<void>.delayed(const Duration(seconds: 1));
           print('disconnecting from machine and trying again');
@@ -129,8 +157,10 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
           return;
         }
 
+        print('matched desired viam machine $periphName; writing our name now');
+
         try {
-          await char.write(Uint8List.fromList(deviceName.codeUnits));
+          await proxyNameChar.write(Uint8List.fromList(deviceName.codeUnits));
         } catch (error) {
           print(
               'error writing characteristic $error; disconnecting from machine and trying again');
@@ -138,6 +168,8 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
           unawaited(manageMachine(bleCentral, machineName));
           return;
         }
+
+        print('viam machine knows our name and we will wait for a connection');
       }).catchError((error) {
         print('error connecting $error; will try again');
         unawaited(manageMachine(bleCentral, machineName));

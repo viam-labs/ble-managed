@@ -1,13 +1,19 @@
 //! Defines central logic.
 
+use std::{collections::HashSet, time::Duration};
+
 use bluer::{
+    gatt,
     l2cap::{SocketAddr, Stream},
-    AdapterEvent, Device,
+    AdapterEvent, Device, DiscoveryFilter, DiscoveryTransport,
 };
-use futures::{pin_mut, StreamExt};
-use log::{debug, error, info};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use uuid::Uuid;
+use futures::{pin_mut, StreamExt, TryFutureExt};
+use log::{debug, info};
+use tokio::time::timeout;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    time::sleep,
+};
 
 /// Finds previously paired device and its exposed PSM:
 ///
@@ -18,73 +24,133 @@ use uuid::Uuid;
 pub async fn find_device_and_psm(
     adapter: &bluer::Adapter,
     device_name: String,
-    svc_uuid: Uuid,
-    psm_char_uuid: Uuid,
+    svc_uuid: uuid::Uuid,
+    proxy_name_char_uuid: uuid::Uuid,
+    psm_char_uuid: uuid::Uuid,
 ) -> bluer::Result<(Device, u16)> {
     info!(
         "Discovering on Bluetooth adapter {} with address {}\n",
         adapter.name(),
         adapter.address().await?
     );
-    let discover = adapter.discover_devices().await?;
+
+    let filter = DiscoveryFilter {
+        discoverable: false,
+        transport: DiscoveryTransport::Le,
+        uuids: HashSet::from([svc_uuid]),
+        ..Default::default()
+    };
+    adapter.set_discovery_filter(filter).await?;
+
+    if adapter.is_discovering().await? {
+        return Err(bluer::Error {
+            kind: bluer::ErrorKind::Failed,
+            message: "Must stop discovering outside of this process".to_string(),
+        });
+    }
+
+    debug!("start discover");
+
+    let discover = adapter.discover_devices_with_changes().await?;
     pin_mut!(discover);
 
-    // TODO(high): Ensure this loop will discover the mobile device. After the previous GATT
-    // interaction/pairing, the rock4 sometimes never gets a `DeviceAdded` event for the mobile
-    // device. We may have to check `adapter.device_addresses()` to get a list of known device
-    // addresses, and `adapter.device(addr)` on each to find which one represents `device_name`.
-    // I tried that, but it was then sometimes the case that the Viam service could not be found
-    // on the known device.
     while let Some(evt) = discover.next().await {
         match evt {
             AdapterEvent::DeviceAdded(addr) => {
                 let device = adapter.device(addr)?;
-                let addr = device.address();
+                let remote_addr = device.remote_address().await?;
+                info!(
+                    "Device {remote_addr} connected={} paired={} trusted={}",
+                    device.is_connected().await?,
+                    device.is_paired().await?,
+                    device.is_trusted().await?,
+                );
+
                 let uuids = device.uuids().await?.unwrap_or_default();
 
-                // If device is named, do not check for service UUID unless it matches name written
-                // to previously advertised characteristic.
-                if let Some(name) = device.name().await? {
-                    if name != device_name {
-                        continue;
-                    }
-                }
-
                 if uuids.contains(&svc_uuid) {
-                    info!("Device {addr} provides target service");
-                    if !device.is_connected().await? {
-                        info!("Connecting to {addr}...");
-                        // TODO(low): Make this a little more resilient. I use 3 retries because I
-                        // often get a "Software caused connection abort" error below once or even
-                        // twice in a row. I wish I knew what that error was, and if it represented
-                        // something I have incorrectly set up.
-                        let mut retries = 3;
-                        loop {
-                            match device.connect().await {
-                                Ok(()) => break,
-                                Err(err) if retries > 0 => {
-                                    error!("Connect error: {}", &err);
-                                    retries -= 1;
-                                }
-                                Err(err) => return Err(err),
+                    info!(
+                        "Device {remote_addr} provides target service {}",
+                        device.address_type().await?
+                    );
+
+                    info!("Connecting to {remote_addr}...");
+                    let max_retries = 5;
+                    let connect_timeout = Duration::from_secs(20);
+                    let wait_interval = Duration::from_secs(5);
+                    let mut retries = max_retries;
+
+                    let services = loop {
+                        match timeout(connect_timeout, connect(&device)).await {
+                            Ok(Ok(services)) => break services,
+                            Ok(Err(err)) => {
+                                debug!("Connect failed: {}", &err);
+                            }
+                            Err(_) => {
+                                debug!("Connect timed out");
                             }
                         }
-                        info!("Connected");
-                    } else {
-                        debug!("Already connected");
-                    }
 
-                    debug!("Enumerating services...");
-                    for service in device.services().await? {
+                        retries -= 1;
+                        if retries == 0 {
+                            return Err(bluer::Error {
+                                kind: bluer::ErrorKind::Failed,
+                                message: "failed to connect after {max_retries} retries"
+                                    .to_string(),
+                            });
+                        }
+                        sleep(wait_interval).await;
+                    };
+                    info!("Connected");
+
+                    debug!("... found {} services", services.len());
+                    for service in services {
                         let uuid = service.uuid().await?;
                         debug!("Service UUID: {}", &uuid);
                         if uuid == svc_uuid {
                             info!("Found target service");
+
+                            debug!("Checking name");
+                            let mut found_name = false;
+                            for characteristic in service.characteristics().await? {
+                                let uuid = characteristic.uuid().await?;
+                                debug!("Characteristic UUID: {}", &uuid);
+                                if uuid == proxy_name_char_uuid {
+                                    info!("Found name characteristic");
+                                    if characteristic.flags().await?.read {
+                                        debug!("Reading characteristic value");
+                                        let value = characteristic.read().await?;
+                                        let proxy_name = String::from_utf8_lossy(&value);
+                                        if proxy_name == device_name {
+                                            found_name = true;
+                                            break;
+                                        }
+                                        debug!("Read str: {:x?}", &proxy_name);
+                                    }
+                                }
+                            }
+                            if !found_name {
+                                debug!("Skipping this device");
+                                continue;
+                            }
+
+                            debug!("ensuring paired and trusted");
+
+                            if !device.is_paired().await? {
+                                debug!("pairing");
+                                device.pair().await?;
+                            }
+                            if !device.is_trusted().await? {
+                                debug!("trusting");
+                                device.set_trusted(true).await?;
+                            }
+
+                            debug!("Getting PSM");
                             for char in service.characteristics().await? {
                                 let uuid = char.uuid().await?;
                                 debug!("Characteristic UUID: {}", &uuid);
                                 if uuid == psm_char_uuid {
-                                    info!("Found target characteristic");
+                                    info!("Found psm characteristic");
                                     if char.flags().await?.read {
                                         debug!("Reading characteristic value");
                                         let value = char.read().await?;
@@ -92,13 +158,6 @@ pub async fn find_device_and_psm(
                                         let str_psm = String::from_utf8_lossy(&value);
                                         match str_psm.parse::<u16>() {
                                             Ok(psm) => {
-                                                device.set_trusted(true).await?;
-                                                // Disconnect before sending back to L2CAP layer,
-                                                // as that will create another connection.
-                                                //
-                                                // TODO(low): Remove this disconnect if possible.
-                                                // This one actually might be necessary, though.
-                                                device.disconnect().await?;
                                                 return Ok((device, psm));
                                             }
                                             Err(e) => {
@@ -129,23 +188,10 @@ pub async fn find_device_and_psm(
 /// Opens a new L2CAP connection to `Device` on `psm`.
 pub async fn connect_l2cap(device: &Device, psm: u16) -> bluer::Result<Stream> {
     let addr_type = device.address_type().await?;
-    let target_sa = SocketAddr::new(device.address(), addr_type, psm);
+    let target_sa = SocketAddr::new(device.remote_address().await?, addr_type, psm);
 
-    debug!("Connecting to {:?}", &target_sa);
+    debug!("Connecting to L2CAP CoC at {:?}", &target_sa);
     let stream = Stream::connect(target_sa).await?;
-
-    debug!("Local address: {:?}", stream.as_ref().local_addr()?);
-    debug!("Remote address: {:?}", stream.peer_addr()?);
-    debug!("Send MTU: {:?}", stream.as_ref().send_mtu());
-    debug!("Recv MTU: {}", stream.as_ref().recv_mtu()?);
-    debug!("Security: {:?}", stream.as_ref().security()?);
-
-    // TODO(high): Accessing the flow control mode often results in an error (it will just get
-    // printed due to lack of `?`); figure out why. I have not tested writing multiple messages,
-    // but I sense we may "run out of credits" as we did with the C code. I can see that
-    // l2cap_core.c and l2cap_sock.c are creating _basic_ PDUs, which is wrong. Try
-    // `stream.as_ref().set_flow_control(FlowControl::Le)`.
-    debug!("Flow control: {:?}", stream.as_ref().flow_control());
 
     Ok(stream)
 }
@@ -165,8 +211,12 @@ pub async fn write_l2cap(message: String, stream: &mut Stream) -> bluer::Result<
 
 /// Reads a string message from `Stream`.
 pub async fn read_l2cap(stream: &mut Stream) -> bluer::Result<String> {
-    // TODO(low): Create buffer with incoming MTU as the capacity.
-    let mut message_buf = [0u8; 1024];
+    let mtu_as_cap = stream.as_ref().recv_mtu()?;
+    let mut message_buf = vec![0u8; mtu_as_cap as usize];
     stream.read(&mut message_buf).await.expect("read failed");
     Ok(format!("{}", String::from_utf8_lossy(&message_buf)))
+}
+
+async fn connect(device: &Device) -> bluer::Result<Vec<gatt::remote::Service>> {
+    device.connect().and_then(|_| device.services()).await
 }

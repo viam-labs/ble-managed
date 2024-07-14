@@ -4,25 +4,22 @@ use bluer::{
     adv::Advertisement,
     gatt::local::{
         characteristic_control, Application, Characteristic, CharacteristicControlEvent,
-        CharacteristicWrite, CharacteristicWriteMethod, Service,
+        CharacteristicRead, CharacteristicWrite, CharacteristicWriteMethod, Service,
     },
     Adapter,
 };
-use futures::{pin_mut, StreamExt};
+use futures::{pin_mut, FutureExt, StreamExt};
 use log::{debug, info};
-use std::{collections::BTreeMap, str::from_utf8};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use std::{str::from_utf8, time::Duration};
+use tokio::io::AsyncReadExt;
 use uuid::Uuid;
-
-/// Manufacturer ID for LE advertisement (testing ID used for now).
-const TESTING_MANUFACTURER_ID: u16 = 0xffff;
 
 /// Advertises a peripheral device:
 ///
 /// - with adapter `adapter`
-/// - named `device_name`
 /// - with a service IDed as `svc_uuid`
-/// - with a characteristic IDed as `proxy_device_name_char_uuid`
+/// - with a read characteristic IDed as `managed_machine_name_char_uuid` with `device_name`
+/// - with a write characteristic IDed as `socks_proxy_name_char_uuid`
 ///
 /// Waits for a BLE central to write a UTF8-encoded string to that characteristic and returns the
 /// written value (or an error).
@@ -30,48 +27,58 @@ pub async fn advertise_and_find_proxy_device_name(
     adapter: &Adapter,
     device_name: String,
     svc_uuid: Uuid,
-    proxy_device_name_char_uuid: Uuid,
+    managed_name_char_uuid: Uuid,
+    proxy_name_char_uuid: Uuid,
 ) -> bluer::Result<String> {
-    let mut manufacturer_data = BTreeMap::new();
-    manufacturer_data.insert(
-        TESTING_MANUFACTURER_ID,
-        /*arbitrary data */ vec![0x21, 0x22, 0x23, 0x24],
-    );
     let le_advertisement = Advertisement {
-        service_uuids: vec![svc_uuid].into_iter().collect(),
-        manufacturer_data,
-        discoverable: Some(true),
         local_name: Some(device_name.clone()),
+        advertisement_type: bluer::adv::Type::Peripheral,
+        service_uuids: vec![svc_uuid].into_iter().collect(),
+        discoverable: Some(true),
+        min_interval: Some(Duration::from_millis(20)),
+        max_interval: Some(Duration::from_millis(100)),
         ..Default::default()
     };
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);
     info!("Registered advertisement");
 
+    let device_name_copy = device_name.clone();
     let (char_control, char_handle) = characteristic_control();
     let app = Application {
         services: vec![Service {
             uuid: svc_uuid,
             primary: true,
-            characteristics: vec![Characteristic {
-                uuid: proxy_device_name_char_uuid,
-                write: Some(CharacteristicWrite {
-                    write: true,
-                    // TODO(medium): Encrypt the char. Encrypting will force the mobile device to
-                    // pair with the rock4 upon its initial connection attempt. Encrypting seems to
-                    // sometimes cause write failure when the mobile device and the rock4 are
-                    // already paired (writes are not seen in the select below). Check `btmon` for
-                    // a `WriteResponse` error like unauthenticated. I think we have to `trust` the
-                    // mobile device from the rock4.
-                    //
-                    //encrypt_write: true,
-                    //encrypt_authenticated_write: true,
-                    //secure_write: true,
-                    method: CharacteristicWriteMethod::Io,
+            characteristics: vec![
+                Characteristic {
+                    uuid: managed_name_char_uuid,
+                    read: Some(CharacteristicRead {
+                        read: true,
+                        // this is public info
+                        encrypt_read: false,
+                        encrypt_authenticated_read: false,
+                        secure_read: false,
+                        fun: Box::new(move |_| {
+                            let device_name_clone = device_name_copy.clone();
+                            async move { Ok(device_name_clone.as_bytes().to_vec()) }.boxed()
+                        }),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                control_handle: char_handle,
-                ..Default::default()
-            }],
+                },
+                Characteristic {
+                    uuid: proxy_name_char_uuid,
+                    write: Some(CharacteristicWrite {
+                        write: true,
+                        encrypt_write: true,
+                        encrypt_authenticated_write: true,
+                        secure_write: true,
+                        method: CharacteristicWriteMethod::Io,
+                        ..Default::default()
+                    }),
+                    control_handle: char_handle,
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }],
         ..Default::default()
@@ -80,22 +87,22 @@ pub async fn advertise_and_find_proxy_device_name(
 
     info!("Advertising proxy device name char to be written to. Local device name: {device_name}");
 
-    info!("Waiting for proxy device name to be written. Press enter to quit.");
-    let stdin = BufReader::new(tokio::io::stdin());
-    let mut lines = stdin.lines();
-
+    info!("Waiting for proxy device name to be written. Press Ctrl+C to quit.");
     pin_mut!(char_control);
 
     loop {
         tokio::select! {
-            // TODO(low): Add a better select case than waiting for a new stdin line. Ideally, we
-            // are just sensitive to SIGTERM/SIGINT. tokio::main may handle that for us already
-            // but I have not tested.
-            _ = lines.next_line() => break,
             evt = char_control.next() => {
                 match evt {
                     Some(CharacteristicControlEvent::Write(req)) => {
                         debug!("Accepting write request event with MTU {}", req.mtu());
+
+                        // This is encrypted, authenticated, and secure, so let's trust it.
+                        // This will ensure we can get the resolved private address.
+                        debug!("trusting device that wrote this char {}",req.device_address());
+                        adapter.device(req.device_address())?.set_trusted(true).await?;
+                        debug!("{} is now trusted", req.device_address());
+
                         let mut read_buf = vec![0; req.mtu()];
                         let mut reader = req.accept()?;
                         let num_bytes = reader.read(&mut read_buf).await?;
