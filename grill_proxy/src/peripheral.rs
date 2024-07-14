@@ -31,7 +31,6 @@ pub async fn advertise_and_find_proxy_device_name(
     proxy_name_char_uuid: Uuid,
 ) -> bluer::Result<String> {
     let le_advertisement = Advertisement {
-        local_name: Some(device_name.clone()),
         advertisement_type: bluer::adv::Type::Peripheral,
         service_uuids: vec![svc_uuid].into_iter().collect(),
         discoverable: Some(true),
