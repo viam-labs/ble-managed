@@ -127,8 +127,10 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
 
         final periphNameChar = viamSvc.characteristics
             .cast<BleCharacteristic?>()
-            .firstWhere((char) =>
-                char != null && char.id == viamManagedMachineNameCharUUID);
+            .firstWhere(
+                (char) =>
+                    char != null && char.id == viamManagedMachineNameCharUUID,
+                orElse: () => null);
         if (periphNameChar == null) {
           // Note(erd): this could use some retry logic
           print(
@@ -151,8 +153,9 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
 
         final proxyNameChar = viamSvc.characteristics
             .cast<BleCharacteristic?>()
-            .firstWhere((char) =>
-                char != null && char.id == viamSocksProxyNameCharUUID);
+            .firstWhere(
+                (char) => char != null && char.id == viamSocksProxyNameCharUUID,
+                orElse: () => null);
         if (proxyNameChar == null) {
           print('did not find needed PSM char after discovery');
           await Future<void>.delayed(const Duration(seconds: 1));
