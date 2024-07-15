@@ -54,11 +54,24 @@ pub async fn find_device_and_psm(
     let discover = adapter.discover_devices_with_changes().await?;
     pin_mut!(discover);
 
-    while let Some(evt) = discover.next().await {
+    'evt_loop: while let Some(evt) = discover.next().await {
         match evt {
             AdapterEvent::DeviceAdded(addr) => {
                 let device = adapter.device(addr)?;
                 let remote_addr = device.remote_address().await?;
+
+                match device.rssi().await? {
+                    Some(rssi) if rssi <= -100 => {
+                        debug!("Device {remote_addr} out of range; skipping");
+                        continue;
+                    }
+                    None if !device.is_connected().await? => {
+                        debug!("Device {remote_addr} has no RSSI and not connected; skipping");
+                        continue;
+                    }
+                    _ => {}
+                }
+
                 info!(
                     "Device {remote_addr} connected={} paired={} trusted={}",
                     device.is_connected().await?,
@@ -93,11 +106,8 @@ pub async fn find_device_and_psm(
 
                         retries -= 1;
                         if retries == 0 {
-                            return Err(bluer::Error {
-                                kind: bluer::ErrorKind::Failed,
-                                message: "failed to connect after {max_retries} retries"
-                                    .to_string(),
-                            });
+                            debug!("failed to connect after {max_retries} retries");
+                            continue 'evt_loop;
                         }
                         sleep(wait_interval).await;
                     };

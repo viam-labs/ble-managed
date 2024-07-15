@@ -39,7 +39,8 @@ dependencies:
   socks5_proxy: ^1.0.6
   ble:
     # Temporary until public
-    git: git@github.com:viamrobotics/flutter-ble.git
+    # git: git@github.com:viamrobotics/flutter-ble.git
+    path: /Users/eric/viam/flutter-ble
 
 dev_dependencies:
   flutter_test:

@@ -109,6 +109,7 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
   late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
     (periphInfo) {
+      deviceSub.pause();
       print('got event with ${periphInfo.name}');
       bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
         print('connected to $machineName');
@@ -119,6 +120,8 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
         if (viamSvc == null) {
           // Note(erd): this could use some retry logic
           print("viam service missing; disconnecting");
+          await periph.disconnect();
+          deviceSub.resume();
           return;
         }
 
@@ -131,6 +134,7 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
           print(
               'did not find needed periph name char after discovery; disconnecting');
           await periph.disconnect();
+          deviceSub.resume();
           return;
         }
 
@@ -139,6 +143,7 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
           // Note(erd): this could use some retry logic
           print('found a different viam machine $periphName; disconnecting');
           await periph.disconnect();
+          deviceSub.resume();
           return;
         }
 
