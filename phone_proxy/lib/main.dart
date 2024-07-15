@@ -110,7 +110,7 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
     (periphInfo) {
       deviceSub.pause();
-      print('got event with ${periphInfo.name}');
+      print('found ${periphInfo.name}; connecting...');
       bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
         print('connected to $machineName');
 

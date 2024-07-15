@@ -106,8 +106,13 @@ pub async fn find_device_and_psm(
 
                         retries -= 1;
                         if retries == 0 {
-                            debug!("failed to connect after {max_retries} retries");
-                            continue 'evt_loop;
+                            if device.is_connected().await? {
+                                debug!("failed to connect after {max_retries} retries but will still try");
+                                break device.services().await?;
+                            } else {
+                                debug!("failed to connect after {max_retries} retries");
+                                continue 'evt_loop;
+                            }
                         }
                         sleep(wait_interval).await;
                     };
