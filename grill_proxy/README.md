@@ -8,6 +8,8 @@ and can route all SOCKS requests through those proxies.
 
 # Building
 
+* Build and install latest bluez (https://github.com/bluez/bluez) from source.
+
 Can only build on linux. Run `make setup` (will only try `apt`) and `make build` to build. Run
 `make` or `make run` to run.
 
@@ -20,7 +22,12 @@ Can only build on linux. Run `make setup` (will only try `apt`) and `make build`
 
 ### GATT Caching
 
-This needs to be off in order to reliably reconnect to a paired device. See https://github.com/bluez/bluer/blob/0115d074aa02dd7010415a4f972828a887d9b3ac/bluer/README.md?plain=1#L109-L112 for the `cache = no` option.
+This needs to be off in order to reliably reconnect to a paired device. Set options and then restart service in `/etc/bluetooth/main.conf`:
+```
+ControllerMode = le
+Cache = no
+FastConnectable = true
+```
 
 ### Scanning for devices in `bluetoothctl`
 `menu scan`
@@ -40,4 +47,5 @@ sudo systemctl restart bluetooth
 
 * Make sure `bluetoothctl` is not open during proxy operation since this can mess with the rust based agent.
 
-* Build and install latest bluez (https://github.com/bluez/bluez) from source.
+* Phone stuck in connecting even though it looks like the devices are connected:
+No known workaround other than to se `bluetoothctl` (`remove`) and phone to unpair from each other. Could write a script that disconnects from all devices on the linux side periodically.

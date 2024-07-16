@@ -50,8 +50,14 @@ async fn main() -> bluer::Result<()> {
 
         // TODO(erd->benji): These work for POC but production where some on screen device should
         // confirm.
-        request_confirmation: Some(Box::new(|_| return_ok().boxed())),
-        request_authorization: Some(Box::new(|_| return_ok().boxed())),
+        request_confirmation: Some(Box::new(move |req| {
+            debug!("auto confirming passkey {}", req.passkey);
+            return_ok().boxed()
+        })),
+        request_authorization: Some(Box::new(|_| {
+            debug!("auto accepting pair");
+            return_ok().boxed()
+        })),
         authorize_service: Some(Box::new(|_| return_ok().boxed())),
         ..Default::default()
     };
