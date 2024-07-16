@@ -3,13 +3,11 @@
 use std::{collections::HashSet, time::Duration};
 
 use bluer::{
-    gatt,
     l2cap::{SocketAddr, Stream},
-    AdapterEvent, Device, DiscoveryFilter, DiscoveryTransport,
+    AdapterEvent, Device, DeviceEvent, DeviceProperty, DiscoveryFilter, DiscoveryTransport,
 };
-use futures::{pin_mut, StreamExt, TryFutureExt};
+use futures::{pin_mut, select, FutureExt, StreamExt};
 use log::{debug, info};
-use tokio::time::timeout;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,
@@ -87,36 +85,45 @@ pub async fn find_device_and_psm(
                         device.address_type().await?
                     );
 
-                    info!("Connecting to {remote_addr}...");
-                    let max_retries = 5;
-                    let connect_timeout = Duration::from_secs(20);
-                    let wait_interval = Duration::from_secs(5);
-                    let mut retries = max_retries;
+                    let wait_interval = Duration::from_secs(30);
 
-                    let services = loop {
-                        match timeout(connect_timeout, connect(&device)).await {
-                            Ok(Ok(services)) => break services,
-                            Ok(Err(err)) => {
-                                debug!("Connect failed: {}", &err);
-                            }
-                            Err(_) => {
-                                debug!("Connect timed out");
+                    let changes = device.events().await?.fuse();
+                    pin_mut!(changes);
+
+                    if !device.is_services_resolved().await? {
+                        device.connect().await?;
+                        debug!("waiting for GATT services to resolve");
+                        let timeout = sleep(wait_interval).fuse();
+                        pin_mut!(timeout);
+
+                        loop {
+                            select! {
+                                change_opt = changes.next() => {
+                                    match change_opt {
+                                        Some(DeviceEvent::PropertyChanged (DeviceProperty::ServicesResolved(true)) ) => {
+                                            debug!("services resolved");
+                                            break
+                                        },
+                                        Some(DeviceEvent::PropertyChanged (DeviceProperty::Connected(false)) ) => {
+                                            debug!("connect again, wait for next event");
+                                            device.connect().await?;
+                                        },
+                                        Some(_) => (),
+                                        None => {
+                                            debug!("changes for device stopped streaming; will stop trying until next scan");
+                                            continue 'evt_loop;
+                                        },
+                                    }
+                                },
+                                () = &mut timeout => {
+                                    debug!("failed to connect after {wait_interval:?}l will stop trying until next scan");
+                                    continue 'evt_loop;
+                                },
                             }
                         }
-
-                        retries -= 1;
-                        if retries == 0 {
-                            if device.is_connected().await? {
-                                debug!("failed to connect after {max_retries} retries but will still try");
-                                break device.services().await?;
-                            } else {
-                                debug!("failed to connect after {max_retries} retries");
-                                continue 'evt_loop;
-                            }
-                        }
-                        sleep(wait_interval).await;
-                    };
-                    info!("Connected");
+                    }
+                    debug!("getting resolved services");
+                    let services = device.services().await?;
 
                     debug!("... found {} services", services.len());
                     for service in services {
@@ -230,8 +237,4 @@ pub async fn read_l2cap(stream: &mut Stream) -> bluer::Result<String> {
     let mut message_buf = vec![0u8; mtu_as_cap as usize];
     stream.read(&mut message_buf).await.expect("read failed");
     Ok(format!("{}", String::from_utf8_lossy(&message_buf)))
-}
-
-async fn connect(device: &Device) -> bluer::Result<Vec<gatt::remote::Service>> {
-    device.connect().and_then(|_| device.services()).await
 }
