@@ -108,7 +108,12 @@ pub async fn find_device_and_psm(
                                             debug!("connect again, wait for next event");
                                             device.connect().await?;
                                         },
-                                        Some(_) => (),
+                                        Some(_) => { // check anyway
+                                            if device.is_services_resolved().await? {
+                                                debug!("services resolved");
+                                                break;
+                                            }
+                                        },
                                         None => {
                                             debug!("changes for device stopped streaming; will stop trying until next scan");
                                             continue 'evt_loop;
@@ -116,7 +121,7 @@ pub async fn find_device_and_psm(
                                     }
                                 },
                                 () = &mut timeout => {
-                                    debug!("failed to connect after {wait_interval:?}l will stop trying until next scan");
+                                    debug!("failed to connect after {wait_interval:?} will stop trying until next scan");
                                     continue 'evt_loop;
                                 },
                             }
