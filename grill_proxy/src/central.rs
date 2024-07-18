@@ -8,10 +8,7 @@ use bluer::{
 };
 use futures::{pin_mut, select, FutureExt, StreamExt};
 use log::{debug, info};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
-};
+use tokio::time::sleep;
 
 /// Finds previously paired device and its exposed PSM:
 ///
@@ -221,25 +218,4 @@ pub async fn connect_l2cap(device: &Device, psm: u16) -> bluer::Result<Stream> {
     let stream = Stream::connect(target_sa).await?;
 
     Ok(stream)
-}
-
-/// Writes `message` to `Stream`.
-pub async fn write_l2cap(message: String, stream: &mut Stream) -> bluer::Result<()> {
-    // Note that write_all will automatically split the buffer into
-    // multiple writes of MTU size.
-    stream
-        .write_all(message.as_bytes())
-        .await
-        .map_err(|e| bluer::Error {
-            kind: bluer::ErrorKind::Failed,
-            message: format!("Failed to write: {e}"),
-        })
-}
-
-/// Reads a string message from `Stream`.
-pub async fn read_l2cap(stream: &mut Stream) -> bluer::Result<String> {
-    let mtu_as_cap = stream.as_ref().recv_mtu()?;
-    let mut message_buf = vec![0u8; mtu_as_cap as usize];
-    stream.read(&mut message_buf).await.expect("read failed");
-    Ok(format!("{}", String::from_utf8_lossy(&message_buf)))
 }
