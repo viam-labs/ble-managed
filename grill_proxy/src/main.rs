@@ -104,9 +104,9 @@ async fn main() -> bluer::Result<()> {
     env_logger::init();
     info!("Started main method");
 
-    let (stream, handle) = create_l2cap_stream_to_viam_proxy().await?;
+    let (mut stream, handle) = create_l2cap_stream_to_viam_proxy().await?;
 
-    socks::start_proxy(stream).await?;
+    socks::start_proxy(&mut stream).await?;
 
     info!("Finished main method");
     drop(handle);
