@@ -8,6 +8,7 @@ import 'package:ble/ble_central.dart';
 import 'package:ble/ble_peripheral.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:socks5_proxy/socks_server.dart';
 
 List<String> lines = [];
 
@@ -90,14 +91,12 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
     print('serve channel $thisCount as a SOCKS5 server');
-    // TODO(erd->benji) - remove this line and uncomment the rest when SOCKS is ready
-    await chan.write(Uint8List.fromList("world".codeUnits));
-    //final socksServerProxy = SocksServer();
-    //socksServerProxy.connections.listen((connection) async {
-    //  print(
-    //      'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
-    //  await connection.forward(allowIPv6: true);
-    //}).onError(print);
+    final socksServerProxy = SocksServer();
+    socksServerProxy.connections.listen((connection) async {
+      print(
+          'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
+      await connection.forward(allowIPv6: true);
+    }).onError(print);
 
     //unawaited(socksServerProxy
     //    .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
