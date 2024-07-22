@@ -49,9 +49,11 @@ pub async fn start_proxy(stream: &mut l2cap::Stream) -> bluer::Result<()> {
             debug!("Reading response from L2CAP stream...");
             let mtu_as_cap = stream.as_ref().recv_mtu()?;
             let mut message_buf = vec![0u8; mtu_as_cap as usize];
-            stream.read(&mut message_buf).await?;
+            let n = stream.read(&mut message_buf).await?;
 
-            debug!("Writing response to TCP stream...");
+            message_buf.truncate(n);
+            let length = message_buf.len();
+            debug!("Writing response to TCP stream: length of message was {length}...");
             tcp_stream.write_all(&message_buf).await?;
         }
     }

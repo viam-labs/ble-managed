@@ -27,7 +27,7 @@ func main() {
 			Type:    rpc.CredentialsTypeAPIKey,
 			Payload: "sjiibmj1c3av7wkrmsw43j1fz7ud9hyq",
 		},
-	))
+	), rpc.WithDialDebug())
 
 	logger.Info("Creating gRPC connection to app.viam.com:443...")
 	clientConn, err := rpc.DialDirectGRPC(ctx, "app.viam.com:443", logger, dialOpts...)
