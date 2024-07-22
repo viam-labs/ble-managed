@@ -22,7 +22,7 @@ pub async fn start_proxy(stream: &mut l2cap::Stream) -> bluer::Result<()> {
 
     // TODO: Use _addr to multiplex.
     while let Ok((mut tcp_stream, _addr)) = listener.accept().await {
-        let mut num_received_msgs = 2;
+        let mut num_received_msgs = 0;
         loop {
             // Wait for the stream to be readable.
             debug!("Waiting for TCP stream to be readable...");
