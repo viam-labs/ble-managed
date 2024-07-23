@@ -62,6 +62,15 @@ func main() {
 		panic(err)
 	}
 	println("GOUTILS: success dialing")
+	if _, err = conn.Write([]byte{0, 1, 2, 3, 4, 5}); err != nil {
+		panic(err)
+	}
+	println("GOUTILS: success writing")
+	buf := make([]byte, 100)
+	if _, err = conn.Read(buf); err != nil {
+		panic(err)
+	}
+	println("GOUTILS: success reading")
 	if err := conn.Close(); err != nil {
 		panic(err)
 	}
