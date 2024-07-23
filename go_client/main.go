@@ -59,11 +59,16 @@ func main() {
 	}
 
 	addr := "http://google.com"
-	println("GO CLIENT: Actually dialing")
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {
-		return dialer.Dial(network, addr)
+		println("GO CLIENT: Actually dialing")
+		conn, err := dialer.Dial(network, addr)
+		if err != nil {
+			println("GO CLIENT: error from dialing", err.Error())
+			return nil, err
+		}
+		return conn, nil
 	}
 	client := &http.Client{Transport: transport}
 
