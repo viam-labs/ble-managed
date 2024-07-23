@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net"
+	"net/http"
 
 	"golang.org/x/net/proxy"
 )
@@ -57,26 +60,22 @@ func main() {
 
 	addr := "10.1.9.95:8080"
 	println("GO CLIENT: Actually dialing")
-	conn, err := dialer.Dial("tcp", addr)
-	if err != nil {
-		panic(err)
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {
+		return dialer.Dial(network, addr)
 	}
+	client := &http.Client{Transport: transport}
+
 	for i := 0; i < 5; i++ {
-		println("GOUTILS: success dialing")
-		msg := fmt.Sprint("hello", i)
-		if _, err = conn.Write([]byte(msg)); err != nil {
-			panic(err)
-		}
-		println("GOUTILS: success writing")
-		buf := make([]byte, 100)
-		n, err := conn.Read(buf)
+		// Getting!
+		println("GOUTILS: getting")
+		resp, err := client.Get(addr)
 		if err != nil {
 			panic(err)
 		}
-		println("GOUTILS: success reading, message was", string(buf[:n]))
+		fmt.Printf("GOUTILS: success getting, response was %+v\n", resp)
 	}
-	if err := conn.Close(); err != nil {
-		panic(err)
-	}
-	println("GO CLIENT: success closing")
+
+	println("GO CLIENT: success finishing")
 }
