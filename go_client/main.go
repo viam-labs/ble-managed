@@ -61,16 +61,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	println("GOUTILS: success dialing")
-	if _, err = conn.Write([]byte{0, 1, 2, 3, 4, 5}); err != nil {
-		panic(err)
+	for i := 0; i < 5; i++ {
+		println("GOUTILS: success dialing")
+		msg := fmt.Sprint("hello", i)
+		if _, err = conn.Write([]byte(msg)); err != nil {
+			panic(err)
+		}
+		println("GOUTILS: success writing")
+		buf := make([]byte, 100)
+		n, err := conn.Read(buf)
+		if err != nil {
+			panic(err)
+		}
+		println("GOUTILS: success reading, message was", string(buf[:n]))
 	}
-	println("GOUTILS: success writing")
-	buf := make([]byte, 100)
-	if _, err = conn.Read(buf); err != nil {
-		panic(err)
-	}
-	println("GOUTILS: success reading")
 	if err := conn.Close(); err != nil {
 		panic(err)
 	}
