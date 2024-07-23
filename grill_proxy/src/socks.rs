@@ -52,6 +52,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         debug!("Continuing due to possible block...");
+                        continue;
                     }
                     Err(e) => {
                         error!("Error reading from TCP stream: {e}");
