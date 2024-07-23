@@ -4,10 +4,7 @@ mod central;
 mod peripheral;
 mod socks;
 
-use bluer::{
-    agent::{Agent, AgentHandle, ReqResult},
-    l2cap,
-};
+use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
 use log::{debug, info};
 use uuid::uuid;
@@ -36,9 +33,9 @@ async fn return_ok() -> ReqResult<()> {
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
 /// name of this device can be read, and one to which the proxy device name can be be written. Once
 /// a name is written, scans for another BLE device with that proxy device name and a corresponding
-/// Viam service UUID and PSM characteristic. It then opens an L2CAP stream over that advertised
-/// PSM. Returns the created stream and the agent handle.
-async fn create_l2cap_stream_to_viam_proxy() -> bluer::Result<(l2cap::Stream, AgentHandle)> {
+/// Viam service UUID and PSM characteristic. It then returns the device, the discoverd PSM, and
+/// the agent handle.
+async fn find_viam_proxy_device_and_psm() -> bluer::Result<(bluer::Device, u16, AgentHandle)> {
     debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
@@ -96,7 +93,7 @@ async fn create_l2cap_stream_to_viam_proxy() -> bluer::Result<(l2cap::Stream, Ag
         device.remote_address().await?
     );
 
-    Ok((central::connect_l2cap(&device, psm).await?, handle))
+    Ok((device, psm, handle))
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -104,9 +101,9 @@ async fn main() -> bluer::Result<()> {
     env_logger::init();
     info!("Started main method");
 
-    let (mut stream, handle) = create_l2cap_stream_to_viam_proxy().await?;
+    let (device, psm, handle) = find_viam_proxy_device_and_psm().await?;
 
-    socks::start_proxy(&mut stream).await?;
+    socks::start_proxy(device, psm).await?;
 
     info!("Finished main method");
     drop(handle);

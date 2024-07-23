@@ -210,7 +210,7 @@ pub async fn find_device_and_psm(
 }
 
 /// Opens a new L2CAP connection to `Device` on `psm`.
-pub async fn connect_l2cap(device: &Device, psm: u16) -> bluer::Result<Stream> {
+pub async fn connect_l2cap(device: Device, psm: u16) -> bluer::Result<Stream> {
     let addr_type = device.address_type().await?;
     let target_sa = SocketAddr::new(device.remote_address().await?, addr_type, psm);
 
