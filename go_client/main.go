@@ -58,7 +58,7 @@ func main() {
 		panic(fmt.Errorf("error dialing SOCKS proxy %q from environment: %w", proxyAddr, err))
 	}
 
-	addr := "10.1.9.95:8080"
+	addr := "http://google.com"
 	println("GO CLIENT: Actually dialing")
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
