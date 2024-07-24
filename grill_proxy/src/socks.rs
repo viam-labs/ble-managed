@@ -86,10 +86,6 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
                             break;
                         }
                     };
-                    if n == 0 {
-                        // Stop trying to read when we can't read any more bytes.
-                        break;
-                    }
                     num_received_msgs += 1;
 
                     message_buf.truncate(n);
@@ -101,6 +97,11 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
                     }
                     if let Err(e) = tcp_stream.write_all(&message_buf).await {
                         error!("Error writing to TCP stream: {e}");
+                        break;
+                    }
+
+                    if n != mtu_as_cap as usize {
+                        // No more!
                         break;
                     }
                 }
