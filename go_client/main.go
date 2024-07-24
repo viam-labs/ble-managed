@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 
@@ -79,9 +80,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		var responseBody []byte
-		if _, err := resp.Body.Read(responseBody); err != nil {
-			println("GO CLIENT: error reading body", err.Error())
+		responseBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			panic(err)
 		}
 		fmt.Printf("GOUTILS: success getting, response was %+v\n", string(responseBody))
 	}
