@@ -79,7 +79,11 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("GOUTILS: success getting, response was %+v\n", resp)
+		var responseBody []byte
+		if _, err := resp.Body.Read(responseBody); err != nil {
+			println("GO CLIENT: error reading body", err.Error())
+		}
+		fmt.Printf("GOUTILS: success getting, response was %+v\n", string(responseBody))
 	}
 
 	println("GO CLIENT: success finishing")
