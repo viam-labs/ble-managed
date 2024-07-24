@@ -68,7 +68,6 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
                     break;
                 }
 
-                debug!("Reading response from L2CAP stream...");
                 let mtu_as_cap = match stream.as_ref().recv_mtu() {
                     Ok(recv_mtu) => recv_mtu,
                     Err(e) => {
@@ -76,26 +75,34 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
                         break;
                     }
                 };
-                let mut message_buf = vec![0u8; mtu_as_cap as usize];
-                let n = match stream.read(&mut message_buf).await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        error!("Error reading from L2CAP stream: {e}");
+
+                loop {
+                    debug!("Reading response from L2CAP stream...");
+                    let mut message_buf = vec![0u8; mtu_as_cap as usize];
+                    let n = match stream.read(&mut message_buf).await {
+                        Ok(n) => n,
+                        Err(e) => {
+                            error!("Error reading from L2CAP stream: {e}");
+                            break;
+                        }
+                    };
+                    if n == 0 {
+                        // Stop trying to read when we can't read any more bytes.
                         break;
                     }
-                };
-                num_received_msgs += 1;
+                    num_received_msgs += 1;
 
-                message_buf.truncate(n);
-                let length = message_buf.len();
-                debug!("Writing response to TCP stream: length of message was {length}...");
-                if num_received_msgs < 3 {
-                    // Only print message context for first 2 messages.
-                    debug!("Writing response to TCP stream: message was {message_buf:#?}...");
-                }
-                if let Err(e) = tcp_stream.write_all(&message_buf).await {
-                    error!("Error writing to TCP stream: {e}");
-                    break;
+                    message_buf.truncate(n);
+                    let length = message_buf.len();
+                    debug!("Writing response to TCP stream: length of message was {length}...");
+                    if num_received_msgs < 3 {
+                        // Only print message context for first 2 messages.
+                        debug!("Writing response to TCP stream: message was {message_buf:#?}...");
+                    }
+                    if let Err(e) = tcp_stream.write_all(&message_buf).await {
+                        error!("Error writing to TCP stream: {e}");
+                        break;
+                    }
                 }
             }
         });
