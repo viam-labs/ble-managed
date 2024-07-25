@@ -1,6 +1,6 @@
 //! Defines SOCKS forwarding logic.
 
-use crate::central;
+use bluer::l2cap;
 use log::{debug, error, info, trace};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -25,7 +25,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
         tokio::spawn(async move {
             let (mut tcp_stream_read, mut tcp_stream_write) = tokio::io::split(tcp_stream);
 
-            let l2cap_stream = match central::connect_l2cap(device_clone, psm).await {
+            let l2cap_stream = match connect_l2cap(device_clone, psm).await {
                 Ok(stream) => stream,
                 Err(e) => {
                     error!("Error creating L2CAP stream: {e}");
@@ -104,4 +104,15 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
     }
 
     Ok(())
+}
+
+/// Opens a new L2CAP stream to `Device` on `psm`.
+pub async fn connect_l2cap(device: bluer::Device, psm: u16) -> bluer::Result<l2cap::Stream> {
+    let addr_type = device.address_type().await?;
+    let target_sa = l2cap::SocketAddr::new(device.remote_address().await?, addr_type, psm);
+
+    debug!("Connecting to L2CAP CoC at {:?}", &target_sa);
+    let stream = l2cap::Stream::connect(target_sa).await?;
+
+    Ok(stream)
 }

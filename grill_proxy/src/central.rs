@@ -3,7 +3,6 @@
 use std::{collections::HashSet, time::Duration};
 
 use bluer::{
-    l2cap::{SocketAddr, Stream},
     AdapterEvent, Device, DeviceEvent, DeviceProperty, DiscoveryFilter, DiscoveryTransport,
 };
 use futures::{pin_mut, select, FutureExt, StreamExt};
@@ -207,15 +206,4 @@ pub async fn find_device_and_psm(
         kind: bluer::ErrorKind::Failed,
         message: "Service and characteristic combination not found".to_string(),
     })
-}
-
-/// Opens a new L2CAP connection to `Device` on `psm`.
-pub async fn connect_l2cap(device: Device, psm: u16) -> bluer::Result<Stream> {
-    let addr_type = device.address_type().await?;
-    let target_sa = SocketAddr::new(device.remote_address().await?, addr_type, psm);
-
-    debug!("Connecting to L2CAP CoC at {:?}", &target_sa);
-    let stream = Stream::connect(target_sa).await?;
-
-    Ok(stream)
 }
