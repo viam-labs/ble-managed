@@ -5,6 +5,9 @@ import (
 	"net/http"
 )
 
+// Basic go HTTP server that echos requests. For use in testing sending HTTP
+// requests over the SOCKS bridge.
+
 func echoHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		// Read the request URL and query parameters
