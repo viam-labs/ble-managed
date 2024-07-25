@@ -10,6 +10,9 @@ use tokio::{
 /// The port on which to start the SOCKS proxy.
 const PORT: u16 = 5000;
 
+/// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
+const RECV_MTU: u16 = 2048;
+
 /// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
 /// created against the `device` on `psm`.
 pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
@@ -32,20 +35,17 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> bluer::Result<()> {
                     return;
                 }
             };
-            let mtu_as_cap = match l2cap_stream.as_ref().recv_mtu() {
-                Ok(recv_mtu) => recv_mtu as usize,
-                Err(e) => {
-                    error!("Error getting recv_mtu from L2CAP stream: {e}");
-                    return;
-                }
-            };
+            if let Err(e) = l2cap_stream.as_ref().set_recv_mtu(RECV_MTU) {
+                error!("Error setting recv mtu on L2CAP stream: {e}");
+                return;
+            }
             let (mut l2cap_stream_read, mut l2cap_stream_write) = tokio::io::split(l2cap_stream);
 
             // Spawn a coroutine to read from L2CAP stream and write to TCP stream.
             tokio::spawn(async move {
                 loop {
                     debug!("Reading response from L2CAP stream...");
-                    let mut message_buf = vec![0u8; mtu_as_cap];
+                    let mut message_buf = vec![0u8; RECV_MTU as usize];
                     let n = match l2cap_stream_read.read(&mut message_buf).await {
                         Ok(n) if n > 0 => n,
                         Ok(_) => {
