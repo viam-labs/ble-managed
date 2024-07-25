@@ -11,7 +11,7 @@ use tokio::{
 const PORT: u16 = 5000;
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
-const RECV_MTU: u16 = 2048;
+const RECV_MTU: u16 = 65535;
 
 /// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
 /// created against the `device` on `psm`.
@@ -107,47 +107,14 @@ pub async fn connect_l2cap(device: bluer::Device, psm: u16) -> bluer::Result<l2c
     let addr_type = device.address_type().await?;
     let target_sa = l2cap::SocketAddr::new(device.remote_address().await?, addr_type, psm);
 
-    let stream = l2cap::Socket::new_stream()?;
+    let stream = l2cap::Socket::<l2cap::Stream>::new_stream()?;
 
-    match stream.recv_mtu() {
-        Ok(recv_mtu) => {
-            info!("Default recv_mtu is {recv_mtu}");
-        }
-        Err(e) => {
-            error!("Error getting default recv_mtu value: {e}");
-        }
-    };
+    if let Err(e) = stream.set_recv_mtu(RECV_MTU) {
+        error!("Error setting recv mtu value of {RECV_MTU}: {e}");
+    }
 
-    match stream.send_mtu() {
-        Ok(send_mtu) => {
-            info!("Default recv_mtu is {send_mtu}");
-        }
-        Err(e) => {
-            error!("Error getting default send_mtu value: {e}");
-        }
-    };
-
-    match stream.recv_buffer() {
-        Ok(recv_buf) => {
-            info!("Default recv_buffer is {recv_buf}");
-        }
-        Err(e) => {
-            error!("Error getting default recv_mtu value: {e}");
-        }
-    };
-
-    match stream.l2cap_opts() {
-        Ok(l2cap_opts) => {
-            info!("Default l2cap_opts are {l2cap_opts:#?}");
-        }
-        Err(e) => {
-            error!("Error getting default recv_mtu value: {e}");
-        }
-    };
-
-    //if let Err(e) = stream.set_recv_mtu(RECV_MTU) {
-    //error!("Error setting recv mtu value of {RECV_MTU}: {e}");
-    //}
+    debug!("Binding socket");
+    stream.bind(l2cap::SocketAddr::any_le())?;
 
     info!("Connecting to L2CAP CoC at {:?}", &target_sa);
     stream.connect(target_sa).await.map_err(|e| bluer::Error {
