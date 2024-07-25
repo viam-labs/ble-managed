@@ -11,7 +11,7 @@ use tokio::{
 const PORT: u16 = 5000;
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
-const RECV_MTU: u16 = 65535;
+const RECV_MTU: u16 = 2048;
 
 /// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
 /// created against the `device` on `psm`.
@@ -112,7 +112,9 @@ pub async fn connect_l2cap(device: bluer::Device, psm: u16) -> bluer::Result<l2c
     let target_sa = l2cap::SocketAddr::new(device.remote_address().await?, addr_type, psm);
 
     let stream = l2cap::Socket::new_stream()?;
-    stream.set_recv_mtu(RECV_MTU)?;
+    if let Err(e) = stream.set_recv_mtu(RECV_MTU) {
+        error!("Error setting recv mtu value of {RECV_MTU}: {e}");
+    }
 
     info!("Connecting to L2CAP CoC at {:?}", &target_sa);
     stream.connect(target_sa).await.map_err(|e| bluer::Error {
