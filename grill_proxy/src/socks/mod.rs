@@ -1,5 +1,7 @@
 //! Defines SOCKS forwarding logic.
 
+mod mux;
+
 use bluer::l2cap;
 use log::{debug, error, info, trace};
 use tokio::{
