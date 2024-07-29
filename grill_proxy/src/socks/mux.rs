@@ -1,6 +1,6 @@
 use bluer::l2cap;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use log::{debug, error, info};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU16;
@@ -22,6 +22,7 @@ struct L2CAPStreamSocketMultiplexer {
 }
 
 impl L2CAPStreamSocketMultiplexer {
+    /// Creates new mux.
     pub(crate) fn new(stream: l2cap::Stream) -> Self {
         let port_to_socket = HashMap::default();
         let next_port = AtomicU16::new(0);
@@ -37,12 +38,13 @@ impl L2CAPStreamSocketMultiplexer {
         };
 
         mux.pipe_reads_into_chunks(stream_read, chunks_send);
+        mux.read_chunks_to_sockets();
 
         mux
     }
 
     /// Reads from network into chunks.
-    pub(crate) fn pipe_reads_into_chunks(
+    fn pipe_reads_into_chunks(
         &mut self,
         mut stream_read: ReadHalf<l2cap::Stream>,
         chunks_send: Sender<Vec<u8>>,
@@ -71,38 +73,55 @@ impl L2CAPStreamSocketMultiplexer {
     }
 
     /// Reads chunks into sockets.
-    pub(crate) async fn read_chunks_to_sockets(&mut self) {
+    fn read_chunks_to_sockets(&mut self) {
         let handler = tokio::spawn(async move {
             loop {
-                // todo
+                // Read from chunk_reader and deserialize as a packet.
             }
         });
         self.tasks.push(handler);
     }
 
     /// Pipes writes from all sockets into the network.
-    pub(crate) async fn pipe_writes_into_chan(&mut self) -> Result<()> {
+    fn pipe_writes_into_chan(&mut self) -> Result<()> {
         Ok(())
     }
 
     /// Sends keep alives.
-    pub(crate) async fn send_keep_alive_frames_forever(&mut self) -> Result<()> {
+    fn send_keep_alive_frames_forever(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-/// An abstract packet to send over an L2CAPStreamedSocket.
-trait Packet {}
+enum Packet {
+    Data {
+        port: u8,
+        data: Vec<u8>,
+    },
+    Control {
+        msg_type: u8,
+        for_port: u16,
+        status: u8,
+        raw_data: Vec<u8>,
+    },
+}
 
-/// A control packet to send over an L2CAPStreamedSocket.
-struct ControlPacket {}
+impl Packet {
+    async fn deserialize(chunks_receive: Receiver<Vec<u8>>) -> Result<Self> {
+        let message_buf = Vec::with_capacity(2);
+        let n = chunks_receive.recv_many(&mut message_buf, 2).await;
+        if n != 2 {
+            return Err(anyhow!("expected 2 bytes for PORT but got {n}"));
+        }
+        // Decode PORT from first two bytes.
 
-impl Packet for ControlPacket {}
+        Ok(())
+    }
 
-/// A data packet to send over an L2CAPStreamedSocket.
-struct DataPacket {}
-
-impl Packet for DataPacket {}
+    fn serialize(&self) -> Result<Vec<u8>> {
+        Ok(())
+    }
+}
 
 /// A "socket" to be multiplexed over an L2CAP stream by an `L2CAPStreamMultiplexer`.
 struct L2CAPStreamedSocket {
