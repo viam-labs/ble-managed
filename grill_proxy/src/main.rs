@@ -33,7 +33,7 @@ async fn return_ok() -> ReqResult<()> {
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
 /// name of this device can be read, and one to which the proxy device name can be be written. Once
 /// a name is written, scans for another BLE device with that proxy device name and a corresponding
-/// Viam service UUID and PSM characteristic. It then returns the device, the discoverd PSM, and
+/// Viam service UUID and PSM characteristic. It then returns the device, the discovered PSM, and
 /// the agent handle.
 async fn find_viam_proxy_device_and_psm() -> bluer::Result<(bluer::Device, u16, AgentHandle)> {
     debug!("Getting bluer session");
@@ -48,8 +48,7 @@ async fn find_viam_proxy_device_and_psm() -> bluer::Result<(bluer::Device, u16, 
         request_passkey: None,
         display_passkey: None,
 
-        // TODO(erd->benji): These work for POC but production where some on screen device should
-        // confirm.
+        // TODO: These work for POC but not for production; some on screen device should confirm.
         request_confirmation: Some(Box::new(move |req| {
             debug!("auto confirming passkey {}", req.passkey);
             return_ok().boxed()

@@ -48,4 +48,4 @@ sudo systemctl restart bluetooth
 * Make sure `bluetoothctl` is not open during proxy operation since this can mess with the rust based agent.
 
 * Phone stuck in connecting even though it looks like the devices are connected:
-No known workaround other than to se `bluetoothctl` (`remove`) and phone to unpair from each other. Could write a script that disconnects from all devices on the linux side periodically.
+No known workaround other than to `bluetoothctl` (`remove`) and phone to unpair from each other. Could write a script that disconnects from all devices on the linux side periodically.
