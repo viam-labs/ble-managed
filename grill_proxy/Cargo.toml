@@ -11,5 +11,5 @@ dashmap = "6.0.1"
 env_logger = "0.11.3"
 futures = "0.3.30"
 log = "0.4.22"
-tokio = { version = "1.38.0", features = ["io-std"] }
+tokio = { version = "1.38.0", features = ["io-std", "signal"] }
 uuid = "1.9.1"

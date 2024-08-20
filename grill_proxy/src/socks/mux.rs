@@ -21,7 +21,7 @@ use tokio::{
 const RECV_MTU: u16 = 65535;
 
 /// A multiplexer that allows sharing one L2CAP stream between multiple TCP streams.
-struct L2CAPStreamMux {
+pub(crate) struct L2CAPStreamMux {
     // Next "port" to assign to an incoming TCP stream.
     next_port: AtomicU16,
     // Map of "ports" to TCP streams.
@@ -37,8 +37,6 @@ struct L2CAPStreamMux {
 
     // Group of tasks.
     tasks: Vec<JoinHandle<()>>,
-    // Whether mux has been stopped.
-    stopped: bool,
 }
 
 impl L2CAPStreamMux {
@@ -61,7 +59,6 @@ impl L2CAPStreamMux {
             tcp_to_l2cap_send: Arc::new(tcp_to_l2cap_send),
             tcp_to_l2cap_receive: Arc::new(tcp_to_l2cap_receive),
             tasks,
-            stopped: false,
         };
 
         let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
@@ -78,9 +75,6 @@ impl L2CAPStreamMux {
     /// Incorporates a new TCP stream into the multiplexer.
     pub(crate) async fn add_tcp_stream(&mut self, stream: TcpStream) -> Result<()> {
         debug!("Adding new socket to multiplexer...");
-        if self.stopped {
-            return Err(anyhow!("cannot add new socket; already closed"));
-        }
 
         // Get new "port" value from atomic (start at 0 if overflow).
         if self.next_port.load(Relaxed) > 65535 {
@@ -170,13 +164,12 @@ impl L2CAPStreamMux {
     /// Stops the mux.
     pub(crate) async fn stop(&mut self) -> Result<()> {
         info!("Stopping multiplexer...");
-        self.stopped = true;
 
         while let Some(task) = self.tasks.pop() {
             // TODO: more cleanly shut down tasks with a cancelation signal instead of abort.
             task.abort();
         }
-        info!("Multiplexer stopped...");
+        info!("Multiplexer stopped");
         Ok(())
     }
 
@@ -320,7 +313,39 @@ impl L2CAPStreamMux {
     }
 
     /// Sends keep alives.
-    fn send_keep_alive_frames_forever(&mut self) {}
+    fn send_keep_alive_frames_forever(&mut self) {
+        let tcp_to_l2cap_send = self.tcp_to_l2cap_send.clone();
+        let handler = tokio::spawn(async move {
+            loop {
+                let keep_alive_packet = match Packet::keep_alive().await {
+                    Ok(keep_alive_packet) => keep_alive_packet,
+                    Err(e) => {
+                        error!("Could not create keep-alivep packet: {e}");
+                        break;
+                    }
+                };
+                if let Err(e) = tcp_to_l2cap_send.send(keep_alive_packet) {
+                    error!("Error sending keep-alive to 'tcp_to_l2cap' channel: {e}");
+                    break;
+                }
+
+                // Sleep for one second between keep alives.
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        });
+        self.tasks.push(handler);
+    }
+}
+
+impl Drop for L2CAPStreamMux {
+    fn drop(&mut self) {
+        info!("Dropping multiplexer...");
+        while let Some(task) = self.tasks.pop() {
+            // TODO: more cleanly shut down tasks with a cancelation signal instead of abort.
+            task.abort();
+        }
+        info!("Multiplexer dropped");
+    }
 }
 
 enum Packet {
@@ -412,6 +437,29 @@ impl Packet {
         Ok(Self::Control {
             msg_type: 1,
             for_port,
+            status: 0,
+            raw_data,
+        })
+    }
+
+    /*
+    Keep Alive
+
+    +------+----------+
+    | PORT | MSG_TYPE |
+    +------+----------+
+    | 2=0  |  1=0     |
+    +------+----------+
+    */
+    async fn keep_alive() -> Result<Self> {
+        let mut raw_data = vec![0u8; 3];
+        // TODO: specify endian ordering?
+        raw_data.write_u16(0).await?;
+        raw_data.write_u8(0).await?;
+
+        Ok(Self::Control {
+            msg_type: 0,
+            for_port: 0,
             status: 0,
             raw_data,
         })
