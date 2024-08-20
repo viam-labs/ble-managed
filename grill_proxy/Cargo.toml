@@ -1,5 +1,5 @@
 [package]
-name = "rust_viam_server"
+name = "viam_socks_forwarder"
 version = "0.1.0"
 edition = "2021"
 

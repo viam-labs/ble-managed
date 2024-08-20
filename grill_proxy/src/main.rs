@@ -4,6 +4,7 @@ mod central;
 mod peripheral;
 mod socks;
 
+use anyhow::Result;
 use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
 use log::{debug, info};
@@ -35,7 +36,7 @@ async fn return_ok() -> ReqResult<()> {
 /// a name is written, scans for another BLE device with that proxy device name and a corresponding
 /// Viam service UUID and PSM characteristic. It then returns the device, the discoverd PSM, and
 /// the agent handle.
-async fn find_viam_proxy_device_and_psm() -> bluer::Result<(bluer::Device, u16, AgentHandle)> {
+async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHandle)> {
     debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
@@ -48,7 +49,7 @@ async fn find_viam_proxy_device_and_psm() -> bluer::Result<(bluer::Device, u16, 
         request_passkey: None,
         display_passkey: None,
 
-        // TODO(erd->benji): These work for POC but production where some on screen device should
+        // TODO(seergrills): These work for POC but production where some on screen device should
         // confirm.
         request_confirmation: Some(Box::new(move |req| {
             debug!("auto confirming passkey {}", req.passkey);
@@ -97,7 +98,7 @@ async fn find_viam_proxy_device_and_psm() -> bluer::Result<(bluer::Device, u16, 
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> bluer::Result<()> {
+async fn main() -> Result<()> {
     env_logger::init();
     info!("Started main method");
 

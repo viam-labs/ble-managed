@@ -2,6 +2,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
+use anyhow::{anyhow, Result};
 use bluer::{
     AdapterEvent, Device, DeviceEvent, DeviceProperty, DiscoveryFilter, DiscoveryTransport,
 };
@@ -21,7 +22,7 @@ pub async fn find_device_and_psm(
     svc_uuid: uuid::Uuid,
     proxy_name_char_uuid: uuid::Uuid,
     psm_char_uuid: uuid::Uuid,
-) -> bluer::Result<(Device, u16)> {
+) -> Result<(Device, u16)> {
     info!(
         "Discovering on Bluetooth adapter {} with address {}\n",
         adapter.name(),
@@ -37,10 +38,7 @@ pub async fn find_device_and_psm(
     adapter.set_discovery_filter(filter).await?;
 
     if adapter.is_discovering().await? {
-        return Err(bluer::Error {
-            kind: bluer::ErrorKind::Failed,
-            message: "Must stop discovering outside of this process".to_string(),
-        });
+        return Err(anyhow!("must stop discovering outside of this process"));
     }
 
     debug!("start discover");
@@ -184,12 +182,9 @@ pub async fn find_device_and_psm(
                                                 return Ok((device, psm));
                                             }
                                             Err(e) => {
-                                                return Err(bluer::Error {
-                                                    kind: bluer::ErrorKind::Failed,
-                                                    message: format!(
-                                                        "Found PSM is not a valid u16: {e}"
-                                                    ),
-                                                });
+                                                return Err(anyhow!(
+                                                    "found PSM is not a valid u16: {e}"
+                                                ));
                                             }
                                         }
                                     }
@@ -202,8 +197,5 @@ pub async fn find_device_and_psm(
             _ => (), // Ignore all events beyond AddedDevice.
         }
     }
-    Err(bluer::Error {
-        kind: bluer::ErrorKind::Failed,
-        message: "Service and characteristic combination not found".to_string(),
-    })
+    Err(anyhow!("service and characteristic combination not found"))
 }

@@ -1,6 +1,8 @@
-use bluer::l2cap;
+//! Implements one side of the multiplexing protocol defined in the following specification.
+//! https://github.com/viamrobotics/flutter-ble/blob/bbe7e2a511c452f932c52e3784d7dca3751a03bd/doc/sockets.md
 
 use anyhow::{anyhow, Result};
+use bluer::l2cap;
 use crossbeam_channel::{Receiver, Sender};
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
@@ -13,9 +15,6 @@ use tokio::{
     net::TcpStream,
     task::JoinHandle,
 };
-
-// Multiplexing protocol follows specification defined here:
-// https://github.com/viamrobotics/flutter-ble/blob/bbe7e2a511c452f932c52e3784d7dca3751a03bd/doc/sockets.md
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
 const RECV_MTU: u16 = 65535;
@@ -77,7 +76,7 @@ impl L2CAPStreamMux {
         debug!("Adding new socket to multiplexer...");
 
         // Get new "port" value from atomic (start at 0 if overflow).
-        if self.next_port.load(Relaxed) > 65535 {
+        if self.next_port.load(Relaxed) > 65534 {
             self.next_port.store(0, Relaxed);
         }
         let port = self.next_port.fetch_add(1, Relaxed);
@@ -87,7 +86,6 @@ impl L2CAPStreamMux {
 
         let (mut tcp_stream_read, tcp_stream_write) = tokio::io::split(stream);
         let muxed_stream = MuxedTCPStream {
-            port,
             writer: tcp_stream_write,
         };
         self.port_to_tcp_stream.insert(port, muxed_stream);
@@ -152,24 +150,15 @@ impl L2CAPStreamMux {
                     port,
                     data: message_buf,
                 };
-                tcp_to_l2cap_send.send(data_packet);
+                if let Err(e) = tcp_to_l2cap_send.send(data_packet) {
+                    error!("Error sending data packet to 'tcp_to_l2cap_send' channel; dropping data packet: {e}");
+                    continue;
+                }
             }
         });
         self.tasks.push(handler);
 
         debug!("Added new TCP stream with 'port' {port} to multiplexer");
-        Ok(())
-    }
-
-    /// Stops the mux.
-    pub(crate) async fn stop(&mut self) -> Result<()> {
-        info!("Stopping multiplexer...");
-
-        while let Some(task) = self.tasks.pop() {
-            // TODO: more cleanly shut down tasks with a cancelation signal instead of abort.
-            task.abort();
-        }
-        info!("Multiplexer stopped");
         Ok(())
     }
 
@@ -466,9 +455,8 @@ impl Packet {
     }
 }
 
-/// The WriteHalf of a TCP stream and an associated "port" to be multiplexed.
+/// The WriteHalf of a TCP stream to be multiplexed.
 struct MuxedTCPStream {
-    port: u16,
     // ReadHalf is owned by thread in `add_socket`.
     writer: WriteHalf<TcpStream>,
 }

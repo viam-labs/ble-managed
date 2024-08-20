@@ -1,5 +1,6 @@
 //! Defines peripheral logic.
 
+use anyhow::{anyhow, Result};
 use bluer::{
     adv::Advertisement,
     gatt::local::{
@@ -29,7 +30,7 @@ pub async fn advertise_and_find_proxy_device_name(
     svc_uuid: Uuid,
     managed_name_char_uuid: Uuid,
     proxy_name_char_uuid: Uuid,
-) -> bluer::Result<String> {
+) -> Result<String> {
     let le_advertisement = Advertisement {
         advertisement_type: bluer::adv::Type::Peripheral,
         service_uuids: vec![svc_uuid].into_iter().collect(),
@@ -111,10 +112,7 @@ pub async fn advertise_and_find_proxy_device_name(
                                     return Ok(proxy_device_name_str.to_string());
                                 }
                                 Err(e) => {
-                                    return Err(bluer::Error {
-                                        kind: bluer::ErrorKind::Failed,
-                                        message: format!("Written proxy device name is not a UTF8-encoded string: {e}"),
-                                    });
+                                    return Err(anyhow!("written proxy device name is not a UT8-encoded string: {e}"));
                                 }
                             }
                     },
@@ -126,9 +124,5 @@ pub async fn advertise_and_find_proxy_device_name(
             },
         }
     }
-
-    Err(bluer::Error {
-        kind: bluer::ErrorKind::Failed,
-        message: "Failed to collect a proxy device name".to_string(),
-    })
+    Err(anyhow!("failed to collect a proxy device name"))
 }
