@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
+async-channel = "2.3.1"
 bluer = { version="0.17.3", features = ["bluetoothd", "l2cap"] }
-crossbeam-channel = "0.5.13"
 dashmap = "6.0.1"
 env_logger = "0.11.3"
 futures = "0.3.30"

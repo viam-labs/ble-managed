@@ -2,8 +2,8 @@
 //! https://github.com/viamrobotics/flutter-ble/blob/bbe7e2a511c452f932c52e3784d7dca3751a03bd/doc/sockets.md
 
 use anyhow::{anyhow, Result};
+use async_channel::{self, Receiver, Sender};
 use bluer::l2cap;
-use crossbeam_channel::{Receiver, Sender};
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
 use std::sync::{
@@ -26,11 +26,11 @@ pub(crate) struct L2CAPStreamMux {
     // Map of "ports" to TCP streams.
     port_to_tcp_stream: Arc<DashMap<u16, MuxedTCPStream>>,
 
-    // Raw data from L2CAP to be read by TCP streams.
+    // Raw "chunks" of data from L2CAP to be read by TCP streams.
     l2cap_to_tcp_send: Arc<Sender<Vec<u8>>>,
     l2cap_to_tcp_receive: Arc<Receiver<Vec<u8>>>,
 
-    // Packets from TCP streams to send to L2CAP stream.
+    // `Packet`s from TCP streams to send to L2CAP stream.
     tcp_to_l2cap_send: Arc<Sender<Packet>>,
     tcp_to_l2cap_receive: Arc<Receiver<Packet>>,
 
@@ -45,8 +45,8 @@ impl L2CAPStreamMux {
         let next_port = AtomicU16::new(0);
         let port_to_tcp_stream = Arc::new(DashMap::default());
 
-        let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = crossbeam_channel::unbounded::<Vec<u8>>();
-        let (tcp_to_l2cap_send, tcp_to_l2cap_receive) = crossbeam_channel::unbounded::<Packet>();
+        let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
+        let (tcp_to_l2cap_send, tcp_to_l2cap_receive) = async_channel::unbounded::<Packet>();
 
         let tasks = Vec::new();
 
@@ -65,7 +65,7 @@ impl L2CAPStreamMux {
         mux.pipe_in_l2cap(l2cap_stream_read);
         mux.pipe_out_tcp();
         mux.pipe_in_tcp(l2cap_stream_write);
-        mux.send_keep_alive_frames_forever();
+        mux.send_keepalive_frames_forever();
 
         info!("Started L2CAP stream multiplexer");
         mux
@@ -92,11 +92,11 @@ impl L2CAPStreamMux {
 
         // Send initial control packet to open.
         let control_packet = Packet::control_socket_open(port).await?;
-        self.tcp_to_l2cap_send.send(control_packet)?;
+        self.tcp_to_l2cap_send.send(control_packet).await?;
 
         let tcp_to_l2cap_send = self.tcp_to_l2cap_send.clone();
         // Spawn coroutine (and track it) to continue reading from TCP stream and writing to
-        // appopriate crossbream channel.
+        // 'tcp_to_l2cap' channel.
         let handler = tokio::spawn(async move {
             loop {
                 debug!("Reading request from TCP stream for 'port' {port}...");
@@ -110,13 +110,14 @@ impl L2CAPStreamMux {
                         let control_packet = match Packet::control_socket_closed(port).await {
                             Ok(control_packet) => control_packet,
                             Err(e) => {
-                                error!("Could not create close control packet: {e}");
+                                error!(
+                                    "Could not create 'close' control packet for 'port' {port}: {e}"
+                                );
                                 break;
                             }
                         };
-                        if let Err(e) = tcp_to_l2cap_send.send(control_packet) {
-                            error!("Could not send CLOSE control packet: {e}");
-                            break;
+                        if let Err(e) = tcp_to_l2cap_send.send(control_packet).await {
+                            error!("Could not send 'close' control packet for 'port' {port}: {e}");
                         }
                         break;
                     }
@@ -132,9 +133,8 @@ impl L2CAPStreamMux {
                                 break;
                             }
                         };
-                        if let Err(e) = tcp_to_l2cap_send.send(control_packet) {
+                        if let Err(e) = tcp_to_l2cap_send.send(control_packet).await {
                             error!("Could not send 'close' control packet for 'port' {port}: {e}");
-                            break;
                         }
                         break;
                     }
@@ -150,7 +150,7 @@ impl L2CAPStreamMux {
                     port,
                     data: message_buf,
                 };
-                if let Err(e) = tcp_to_l2cap_send.send(data_packet) {
+                if let Err(e) = tcp_to_l2cap_send.send(data_packet).await {
                     error!("Error sending data packet to 'tcp_to_l2cap_send' channel; dropping data packet: {e}");
                     continue;
                 }
@@ -180,14 +180,38 @@ impl L2CAPStreamMux {
                         break;
                     }
                 };
-                if let Err(e) = l2cap_to_tcp_send.send(chunk_buf) {
-                    error!("Error sending to chunks channel: {e}");
-                    break;
+                if let Err(e) = l2cap_to_tcp_send.send(chunk_buf).await {
+                    error!("Error sending to 'l2cap_to_tcp' channel; dropping chunk: {e}");
+                    continue;
                 }
             }
         });
         self.tasks.push(handler);
     }
+
+    // Read `n` bytes from `l2cap_to_tcp`; grabbing next chunk if necessary.
+    // TODO(move to a new type).
+    //async fn read_bytes(n: usize, reader: Arc<Receiver<) -> Result<Vec<u8>> {
+    //let mut buffer = vec![0; n];
+
+    //// If chunk cursor is empty; grab new chunk.
+    //let pos = self.l2cap_to_tcp_curr_chunk.position() as usize;
+    //let len = self.l2cap_to_tcp_curr_chunk.get_ref().len();
+    //if pos >= len {
+    //self.l2cap_to_tcp_curr_chunk = match self.l2cap_to_tcp_receive.recv().await {
+    //Ok(chunk) => Cursor::new(chunk),
+    //Err(e) => {
+    //info!("Error receiving from 'l2cap_to_tcp' channel; likely closed: {e}");
+    //return Ok(buffer);
+    //}
+    //}
+    //}
+
+    //if let Err(e) = self.l2cap_to_tcp_curr_chunk.read_exact(&mut buffer).await {
+    //error!("Could not read {n} bytes from 'l2cap_to_tcp' channel: {e}");
+    //}
+    //Ok(buffer)
+    //}
 
     /// Reads from `l2cap_to_tcp` to TCP streams.
     fn pipe_out_tcp(&mut self) {
@@ -202,6 +226,7 @@ impl L2CAPStreamMux {
                         continue;
                     }
                 };
+
                 match pkt {
                     Packet::Data { port, data } => {
                         if data.len() == 0 {
@@ -277,7 +302,7 @@ impl L2CAPStreamMux {
         let tcp_to_l2cap_receive = self.tcp_to_l2cap_receive.clone();
         let handler = tokio::spawn(async move {
             loop {
-                match tcp_to_l2cap_receive.recv() {
+                match tcp_to_l2cap_receive.recv().await {
                     Ok(packet) => {
                         let serialized_packet = match packet.serialize().await {
                             Ok(serialized_packet) => serialized_packet,
@@ -292,7 +317,7 @@ impl L2CAPStreamMux {
                         }
                     }
                     Err(e) => {
-                        error!("Error receiving from 'tcp_to_l2cap' channel: {e}");
+                        error!("Error receiving from 'tcp_to_l2cap' channel; likely closed: {e}");
                         break;
                     }
                 }
@@ -301,21 +326,21 @@ impl L2CAPStreamMux {
         self.tasks.push(handler);
     }
 
-    /// Sends keep alives.
-    fn send_keep_alive_frames_forever(&mut self) {
+    /// Sends keepalives.
+    fn send_keepalive_frames_forever(&mut self) {
         let tcp_to_l2cap_send = self.tcp_to_l2cap_send.clone();
         let handler = tokio::spawn(async move {
             loop {
-                let keep_alive_packet = match Packet::keep_alive().await {
-                    Ok(keep_alive_packet) => keep_alive_packet,
+                let keepalive_packet = match Packet::keepalive().await {
+                    Ok(keepalive_packet) => keepalive_packet,
                     Err(e) => {
-                        error!("Could not create keep-alivep packet: {e}");
+                        error!("Could not create keepalive packet: {e}");
                         break;
                     }
                 };
-                if let Err(e) = tcp_to_l2cap_send.send(keep_alive_packet) {
-                    error!("Error sending keep-alive to 'tcp_to_l2cap' channel: {e}");
-                    break;
+                if let Err(e) = tcp_to_l2cap_send.send(keepalive_packet).await {
+                    error!("Error sending keepalive to 'tcp_to_l2cap' channel; dropping keep alive: {e}");
+                    continue;
                 }
 
                 // Sleep for one second between keep alives.
@@ -337,6 +362,7 @@ impl Drop for L2CAPStreamMux {
     }
 }
 
+#[derive(Clone, Debug)]
 enum Packet {
     Data {
         port: u16,
@@ -351,8 +377,9 @@ enum Packet {
 }
 
 impl Packet {
-    async fn deserialize(_chunks_receive: Arc<Receiver<Vec<u8>>>) -> Result<Self> {
+    async fn deserialize(l2cap_to_tcp_receive: Arc<Receiver<Vec<u8>>>) -> Result<Self> {
         let data = vec![0u8; 2];
+        // TODO(benji): write deserialize.
         Ok(Self::Data { port: 0, data })
     }
 
@@ -440,7 +467,7 @@ impl Packet {
     | 2=0  |  1=0     |
     +------+----------+
     */
-    async fn keep_alive() -> Result<Self> {
+    async fn keepalive() -> Result<Self> {
         let mut raw_data = vec![0u8; 3];
         // TODO: specify endian ordering?
         raw_data.write_u16(0).await?;
