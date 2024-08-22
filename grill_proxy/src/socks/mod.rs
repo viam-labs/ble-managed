@@ -1,7 +1,7 @@
 //! Defines SOCKS forwarding logic.
 
-mod mux;
 mod chunker;
+mod mux;
 
 use anyhow::{anyhow, Result};
 use bluer::l2cap;
@@ -34,18 +34,22 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    tokio::select! {
-        Ok((tcp_stream, _addr)) = listener.accept() => {
-            if let Err(e) = mux.add_tcp_stream(tcp_stream).await {
-                return Err(anyhow!("could not add mux TCP stream: {e}"));
-            }
-        },
-        _ = sigterm.recv() => {
-            info!("Stopping SOCKS forwarder (SIGTERM)...");
-        },
-        _ = sigint.recv() => {
-            info!("Stopping SOCKS forwarder (SIGINT)...");
-        },
+    loop {
+        tokio::select! {
+            Ok((tcp_stream, _addr)) = listener.accept() => {
+                if let Err(e) = mux.add_tcp_stream(tcp_stream).await {
+                    return Err(anyhow!("could not add mux TCP stream: {e}"));
+                }
+            },
+            _ = sigterm.recv() => {
+                info!("Stopping SOCKS forwarder (SIGTERM)...");
+                break;
+            },
+            _ = sigint.recv() => {
+                info!("Stopping SOCKS forwarder (SIGINT)...");
+                break;
+            },
+        }
     }
     Ok(())
 }
