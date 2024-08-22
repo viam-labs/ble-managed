@@ -96,8 +96,8 @@ impl L2CAPStreamMux {
             loop {
                 debug!("Reading request from TCP stream for 'port' {port}...");
                 // TODO: use a non-arbitrary cap here.
-                let mut message_buf = vec![0u8; 1024];
-                let n = match tcp_stream_read.read(&mut message_buf).await {
+                let mut data = vec![0u8; 1024];
+                let n = match tcp_stream_read.read(&mut data).await {
                     Ok(n) if n > 0 => n,
                     Ok(_) => {
                         debug!("TCP stream closed for 'port' {port}");
@@ -136,15 +136,14 @@ impl L2CAPStreamMux {
                 };
 
                 // Truncate message.
-                message_buf.truncate(n);
-                let length = message_buf.len();
-                debug!("Writing request of length {length} from TCP stream with 'port' {port} as data packet...");
-                trace!("Request message was {message_buf:#?}");
+                data.truncate(n);
+                debug!(
+                    "Writing data packet for 'port' {port} from TCP stream of length {}...",
+                    data.len()
+                );
+                trace!("Data in packet to be written is {data:#?}");
 
-                let data_packet = Packet::Data {
-                    port,
-                    data: message_buf,
-                };
+                let data_packet = Packet::Data { port, data };
                 if let Err(e) = tcp_to_l2cap_send.send(data_packet).await {
                     error!("Error sending data packet to 'tcp_to_l2cap_send' channel; dropping data packet: {e}");
                     continue;
@@ -214,6 +213,12 @@ impl L2CAPStreamMux {
                                 continue;
                             }
                         };
+
+                        debug!(
+                            "Received data packet for 'port' {port} from L2CAP stream of length {}...",
+                            data.len()
+                        );
+                        trace!("Data in received packet is {data:#?}");
 
                         if let Err(e) = muxed_stream.writer.write(&data).await {
                             error!(
