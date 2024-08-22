@@ -1,6 +1,7 @@
 //! Defines SOCKS forwarding logic.
 
 mod mux;
+mod chunker;
 
 use anyhow::{anyhow, Result};
 use bluer::l2cap;

@@ -1,15 +1,18 @@
 //! Implements one side of the multiplexing protocol defined in the following specification.
 //! https://github.com/viamrobotics/flutter-ble/blob/bbe7e2a511c452f932c52e3784d7dca3751a03bd/doc/sockets.md
 
+use std::sync::{
+    atomic::{AtomicU16, Ordering::Relaxed},
+    Arc,
+};
+
+use super::chunker::Chunker;
+
 use anyhow::{anyhow, Result};
 use async_channel::{self, Receiver, Sender};
 use bluer::l2cap;
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
-use std::sync::{
-    atomic::{AtomicU16, Ordering::Relaxed},
-    Arc,
-};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     net::TcpStream,
@@ -25,15 +28,9 @@ pub(crate) struct L2CAPStreamMux {
     next_port: AtomicU16,
     // Map of "ports" to TCP streams.
     port_to_tcp_stream: Arc<DashMap<u16, MuxedTCPStream>>,
-
-    // Raw "chunks" of data from L2CAP to be read by TCP streams.
-    l2cap_to_tcp_send: Arc<Sender<Vec<u8>>>,
-    l2cap_to_tcp_receive: Arc<Receiver<Vec<u8>>>,
-
-    // `Packet`s from TCP streams to send to L2CAP stream.
+    // `Packet`s from TCP streams to send to L2CAP stream. Stored as an `Arc` on struct as it is
+    // used in multiple places (`add_tcp_stream` and `send_keepalive_frames_forever`).
     tcp_to_l2cap_send: Arc<Sender<Packet>>,
-    tcp_to_l2cap_receive: Arc<Receiver<Packet>>,
-
     // Group of tasks.
     tasks: Vec<JoinHandle<()>>,
 }
@@ -45,26 +42,23 @@ impl L2CAPStreamMux {
         let next_port = AtomicU16::new(0);
         let port_to_tcp_stream = Arc::new(DashMap::default());
 
-        let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
-        let (tcp_to_l2cap_send, tcp_to_l2cap_receive) = async_channel::unbounded::<Packet>();
-
         let tasks = Vec::new();
+
+        let (tcp_to_l2cap_send, tcp_to_l2cap_receive) = async_channel::unbounded::<Packet>();
 
         let mut mux = L2CAPStreamMux {
             next_port,
             port_to_tcp_stream,
-            l2cap_to_tcp_send: Arc::new(l2cap_to_tcp_send),
-            l2cap_to_tcp_receive: Arc::new(l2cap_to_tcp_receive),
             tcp_to_l2cap_send: Arc::new(tcp_to_l2cap_send),
-            tcp_to_l2cap_receive: Arc::new(tcp_to_l2cap_receive),
             tasks,
         };
 
         let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
+        let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
 
-        mux.pipe_in_l2cap(l2cap_stream_read);
-        mux.pipe_out_tcp();
-        mux.pipe_in_tcp(l2cap_stream_write);
+        mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
+        mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
+        mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
         mux.send_keepalive_frames_forever();
 
         info!("Started L2CAP stream multiplexer");
@@ -162,9 +156,12 @@ impl L2CAPStreamMux {
         Ok(())
     }
 
-    /// Reads from L2CAP stream into `l2cap_to_tcp`.
-    fn pipe_in_l2cap(&mut self, mut l2cap_stream_read: ReadHalf<l2cap::Stream>) {
-        let l2cap_to_tcp_send = self.l2cap_to_tcp_send.clone();
+    /// Reads from `l2cap_stream_read` into `l2cap_to_tcp`.
+    fn pipe_in_l2cap(
+        &mut self,
+        mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
+        l2cap_to_tcp_send: Sender<Vec<u8>>,
+    ) {
         let handler = tokio::spawn(async move {
             loop {
                 let mut chunk_buf = vec![0u8; RECV_MTU as usize];
@@ -189,37 +186,12 @@ impl L2CAPStreamMux {
         self.tasks.push(handler);
     }
 
-    // Read `n` bytes from `l2cap_to_tcp`; grabbing next chunk if necessary.
-    // TODO(move to a new type).
-    //async fn read_bytes(n: usize, reader: Arc<Receiver<) -> Result<Vec<u8>> {
-    //let mut buffer = vec![0; n];
-
-    //// If chunk cursor is empty; grab new chunk.
-    //let pos = self.l2cap_to_tcp_curr_chunk.position() as usize;
-    //let len = self.l2cap_to_tcp_curr_chunk.get_ref().len();
-    //if pos >= len {
-    //self.l2cap_to_tcp_curr_chunk = match self.l2cap_to_tcp_receive.recv().await {
-    //Ok(chunk) => Cursor::new(chunk),
-    //Err(e) => {
-    //info!("Error receiving from 'l2cap_to_tcp' channel; likely closed: {e}");
-    //return Ok(buffer);
-    //}
-    //}
-    //}
-
-    //if let Err(e) = self.l2cap_to_tcp_curr_chunk.read_exact(&mut buffer).await {
-    //error!("Could not read {n} bytes from 'l2cap_to_tcp' channel: {e}");
-    //}
-    //Ok(buffer)
-    //}
-
-    /// Reads from `l2cap_to_tcp` to TCP streams.
-    fn pipe_out_tcp(&mut self) {
-        let l2cap_to_tcp_receive = self.l2cap_to_tcp_receive.clone();
+    /// Reads from `l2cap_to_tcp_chunker` to TCP streams.
+    fn pipe_out_tcp(&mut self, mut l2cap_to_tcp_chunker: Chunker) {
         let port_to_tcp_stream = self.port_to_tcp_stream.clone();
         let handler = tokio::spawn(async move {
             loop {
-                let pkt = match Packet::deserialize(l2cap_to_tcp_receive.clone()).await {
+                let pkt = match Packet::deserialize(&mut l2cap_to_tcp_chunker).await {
                     Ok(pkt) => pkt,
                     Err(e) => {
                         error!("Error deserializing packet; dropping data packet: {e}");
@@ -297,9 +269,12 @@ impl L2CAPStreamMux {
         self.tasks.push(handler);
     }
 
-    /// Reads from `tcp_to_l2cap` into L2CAP stream.
-    fn pipe_in_tcp(&mut self, mut l2cap_stream_write: WriteHalf<l2cap::Stream>) {
-        let tcp_to_l2cap_receive = self.tcp_to_l2cap_receive.clone();
+    /// Reads from `tcp_to_l2cap_receive` into `l2cap_stream_write`.
+    fn pipe_in_tcp(
+        &mut self,
+        mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
+        tcp_to_l2cap_receive: Receiver<Packet>,
+    ) {
         let handler = tokio::spawn(async move {
             loop {
                 match tcp_to_l2cap_receive.recv().await {
@@ -377,9 +352,14 @@ enum Packet {
 }
 
 impl Packet {
-    async fn deserialize(l2cap_to_tcp_receive: Arc<Receiver<Vec<u8>>>) -> Result<Self> {
-        let data = vec![0u8; 2];
-        // TODO(benji): write deserialize.
+    async fn deserialize(l2cap_to_tcp_chunker: &mut Chunker) -> Result<Self> {
+        let data = vec![0, 2];
+        let port_bytes = match l2cap_to_tcp_chunker.read(2).await {
+            Ok(port_bytes) => port_bytes,
+            Err(e) => {
+                return Err(anyhow!("failed to read 2 bytes for 'port': {e}"));
+            }
+        };
         Ok(Self::Data { port: 0, data })
     }
 
