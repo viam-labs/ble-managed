@@ -11,6 +11,7 @@ use super::chunker::Chunker;
 use anyhow::{anyhow, Result};
 use async_channel::{self, Receiver, Sender};
 use bluer::l2cap;
+use byteorder::{ByteOrder, LittleEndian};
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
 use tokio::{
@@ -353,11 +354,82 @@ enum Packet {
 
 impl Packet {
     async fn deserialize(l2cap_to_tcp_chunker: &mut Chunker) -> Result<Self> {
-        let data = vec![0, 2];
         let port_bytes = match l2cap_to_tcp_chunker.read(2).await {
             Ok(port_bytes) => port_bytes,
             Err(e) => {
                 return Err(anyhow!("failed to read 2 bytes for 'port': {e}"));
+            }
+        };
+        let port = LittleEndian::read_u16(&port_bytes);
+
+        // Control packet.
+        if port == 0 {
+            let msg_type_byte = match l2cap_to_tcp_chunker.read(1).await {
+                Ok(port_bytes) => port_bytes,
+                Err(e) => {
+                    return Err(anyhow!("failed to read 1 byte for 'msg_type': {e}"));
+                }
+            };
+            let msg_type = msg_type_byte[0];
+            if msg_type == 0 {
+                return Ok(Self::keepalive().await?);
+            }
+            if msg_type != 1 {
+                return Err(anyhow!("do not know how to handle 'msg_type' {msg_type}"));
+            }
+
+            let for_port_bytes = match l2cap_to_tcp_chunker.read(2).await {
+                Ok(port_bytes) => port_bytes,
+                Err(e) => {
+                    return Err(anyhow!("failed to read 2 bytes for 'for_port': {e}"));
+                }
+            };
+            let for_port = LittleEndian::read_u16(&for_port_bytes);
+
+            let status_byte = match l2cap_to_tcp_chunker.read(1).await {
+                Ok(port_bytes) => port_bytes,
+                Err(e) => {
+                    return Err(anyhow!("failed to read 1 byte for 'status': {e}"));
+                }
+            };
+            let status = status_byte[0];
+
+            match status {
+                0 => {
+                    return Ok(Self::control_socket_closed(for_port).await?);
+                }
+                1 => {
+                    error!("Did not expect to receive an 'open' request from this side");
+                    return Ok(Self::control_socket_open(for_port).await?);
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "Do not know how to handle 'for_port' {for_port} and 'status' {status}"
+                    ));
+                }
+            }
+        }
+
+        // Data packet.
+        let length_bytes = match l2cap_to_tcp_chunker.read(4).await {
+            Ok(port_bytes) => port_bytes,
+            Err(e) => {
+                return Err(anyhow!("failed to read 4 bytes for length: {e}"));
+            }
+        };
+        let length = LittleEndian::read_u32(&length_bytes);
+
+        if length == 0 {
+            return Ok(Self::Data {
+                port,
+                data: vec![0, 0],
+            });
+        }
+
+        let data = match l2cap_to_tcp_chunker.read(length as usize).await {
+            Ok(port_bytes) => port_bytes,
+            Err(e) => {
+                return Err(anyhow!("failed to read {length} bytes for data: {e}"));
             }
         };
         Ok(Self::Data { port: 0, data })
