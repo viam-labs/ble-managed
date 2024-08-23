@@ -299,6 +299,9 @@ impl L2CAPStreamMux {
                             }
                         };
 
+                        // TODO(benji): remove this debug.
+                        debug!("Sending packet {serialized_packet:#?} over L2CAP where packet was {packet:#?}");
+
                         if let Err(e) = l2cap_stream_write.write_all(&serialized_packet).await {
                             error!("Error writing to L2CAP stream; dropping packet: {e}");
                             continue;
@@ -434,7 +437,7 @@ impl Packet {
         if length == 0 {
             return Ok(Self::Data {
                 port,
-                data: vec![0, 0],
+                data: vec![0u8, 0],
             });
         }
 
@@ -463,7 +466,7 @@ impl Packet {
                     return Err(anyhow!("data too large to send {}", data_length));
                 }
 
-                let mut length_and_data = vec![0u8; 2 + 4 + data_length];
+                let mut length_and_data = Vec::new();
                 WriteBytesExt::write_u16::<LittleEndian>(&mut length_and_data, port.to_owned())?;
                 WriteBytesExt::write_u32::<LittleEndian>(&mut length_and_data, data_length as u32)?;
                 Write::write_all(&mut length_and_data, data)?;
@@ -491,7 +494,7 @@ impl Packet {
     Status 1 = Open
     */
     fn control_socket_open(for_port: u16) -> Result<Self> {
-        let mut raw_data = vec![0u8; 6];
+        let mut raw_data = Vec::new();
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
         WriteBytesExt::write_u8(&mut raw_data, 1)?;
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, for_port)?;
@@ -505,7 +508,7 @@ impl Packet {
         })
     }
     fn control_socket_closed(for_port: u16) -> Result<Self> {
-        let mut raw_data = vec![0u8; 6];
+        let mut raw_data = Vec::new();
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
         WriteBytesExt::write_u8(&mut raw_data, 1)?;
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, for_port)?;
@@ -529,7 +532,7 @@ impl Packet {
     +------+----------+
     */
     async fn keepalive() -> Result<Self> {
-        let mut raw_data = vec![0u8; 3];
+        let mut raw_data = Vec::new();
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
         WriteBytesExt::write_u8(&mut raw_data, 0)?;
 
