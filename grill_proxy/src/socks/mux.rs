@@ -43,7 +43,7 @@ impl L2CAPStreamMux {
     /// Creates new mux from an L2CAP stream.
     pub(crate) fn create_and_start(stream: l2cap::Stream) -> Self {
         info!("Starting L2CAP stream multiplexer...");
-        let next_port = AtomicU16::new(0);
+        let next_port = AtomicU16::new(1); // Start at 1 to distinguish between control packets.
         let port_to_tcp_stream = Arc::new(DashMap::default());
 
         let tasks = Vec::new();
@@ -73,9 +73,9 @@ impl L2CAPStreamMux {
     pub(crate) async fn add_tcp_stream(&mut self, stream: TcpStream) -> Result<()> {
         debug!("Adding new socket to multiplexer...");
 
-        // Get new "port" value from atomic (start at 0 if overflow).
+        // Get new "port" value from atomic (start at 1 if overflow).
         if self.next_port.load(Relaxed) > 65534 {
-            self.next_port.store(0, Relaxed);
+            self.next_port.store(1, Relaxed);
         }
         let port = self.next_port.fetch_add(1, Relaxed);
         if self.port_to_tcp_stream.contains_key(&port) {
