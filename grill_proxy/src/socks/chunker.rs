@@ -23,6 +23,10 @@ impl Chunker {
         let mut buffer = vec![0; n];
 
         // If chunk cursor is empty or does not have enough bytes for read; grab new chunk.
+        let pos = self.cursor.position();
+        let len = self.cursor.get_ref().len() - n;
+        debug!("Checking if {pos} is >= {len}");
+
         if self.cursor.position() as usize >= self.cursor.get_ref().len() - n {
             let chunk = match self.reader.recv().await {
                 Ok(chunk) => chunk,
