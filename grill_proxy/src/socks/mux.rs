@@ -470,6 +470,8 @@ impl Packet {
                 WriteBytesExt::write_u16::<LittleEndian>(&mut length_and_data, port.to_owned())?;
                 WriteBytesExt::write_u32::<LittleEndian>(&mut length_and_data, data_length as u32)?;
                 Write::write_all(&mut length_and_data, data)?;
+                //TODO(benji): remove this debug
+                debug!("Created a data packet with bytes {length_and_data:#?}");
                 length_and_data
             }
             Packet::Control { raw_data, .. } => raw_data.to_owned(),
