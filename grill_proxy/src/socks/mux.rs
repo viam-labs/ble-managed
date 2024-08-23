@@ -204,6 +204,9 @@ impl L2CAPStreamMux {
 
                 match pkt {
                     Packet::Data { port, data } => {
+                        // TODO(benji): remove this debug.
+                        debug!("Received a data packet back!");
+
                         if data.len() == 0 {
                             warn!("Empty packet; dropping data packet");
                             continue;
@@ -295,9 +298,6 @@ impl L2CAPStreamMux {
                                 continue;
                             }
                         };
-
-                        // TODO(benji): Remove this trace.
-                        debug!("Writing the following bytes to the l2cap_stream: {serialized_packet:#?}, packet was {packet:#?}");
 
                         if let Err(e) = l2cap_stream_write.write_all(&serialized_packet).await {
                             error!("Error writing to L2CAP stream; dropping packet: {e}");
