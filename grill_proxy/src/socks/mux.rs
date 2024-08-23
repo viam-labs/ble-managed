@@ -1,9 +1,12 @@
 //! Implements one side of the multiplexing protocol defined in the following specification.
 //! https://github.com/viamrobotics/flutter-ble/blob/bbe7e2a511c452f932c52e3784d7dca3751a03bd/doc/sockets.md
 
-use std::sync::{
-    atomic::{AtomicU16, Ordering::Relaxed},
-    Arc,
+use std::{
+    io::Write,
+    sync::{
+        atomic::{AtomicU16, Ordering::Relaxed},
+        Arc,
+    },
 };
 
 use super::chunker::Chunker;
@@ -11,7 +14,7 @@ use super::chunker::Chunker;
 use anyhow::{anyhow, Result};
 use async_channel::{self, Receiver, Sender};
 use bluer::l2cap;
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
 use tokio::{
@@ -86,7 +89,7 @@ impl L2CAPStreamMux {
         self.port_to_tcp_stream.insert(port, muxed_stream);
 
         // Send initial control packet to open.
-        let control_packet = Packet::control_socket_open(port).await?;
+        let control_packet = Packet::control_socket_open(port)?;
         self.tcp_to_l2cap_send.send(control_packet).await?;
 
         let tcp_to_l2cap_send = self.tcp_to_l2cap_send.clone();
@@ -102,7 +105,7 @@ impl L2CAPStreamMux {
                     Ok(_) => {
                         debug!("TCP stream closed for 'port' {port}");
                         // Send a close control packet.
-                        let control_packet = match Packet::control_socket_closed(port).await {
+                        let control_packet = match Packet::control_socket_closed(port) {
                             Ok(control_packet) => control_packet,
                             Err(e) => {
                                 error!(
@@ -119,7 +122,7 @@ impl L2CAPStreamMux {
                     Err(e) => {
                         error!("Error reading from TCP stream; closing for 'port' {port}: {e}");
                         // Send a close control packet.
-                        let control_packet = match Packet::control_socket_closed(port).await {
+                        let control_packet = match Packet::control_socket_closed(port) {
                             Ok(control_packet) => control_packet,
                             Err(e) => {
                                 error!(
@@ -285,7 +288,7 @@ impl L2CAPStreamMux {
             loop {
                 match tcp_to_l2cap_receive.recv().await {
                     Ok(packet) => {
-                        let serialized_packet = match packet.serialize().await {
+                        let serialized_packet = match packet.serialize() {
                             Ok(serialized_packet) => serialized_packet,
                             Err(e) => {
                                 error!("Error serializing packet; dropping packet: {e}");
@@ -294,7 +297,7 @@ impl L2CAPStreamMux {
                         };
 
                         // TODO(benji): Remove this trace.
-                        trace!("Writing the following bytes to the l2cap_stream: {serialized_packet:#?}, packet was {packet:#?}");
+                        debug!("Writing the following bytes to the l2cap_stream: {serialized_packet:#?}, packet was {packet:#?}");
 
                         if let Err(e) = l2cap_stream_write.write_all(&serialized_packet).await {
                             error!("Error writing to L2CAP stream; dropping packet: {e}");
@@ -405,11 +408,11 @@ impl Packet {
 
             match status {
                 0 => {
-                    return Ok(Self::control_socket_closed(for_port).await?);
+                    return Ok(Self::control_socket_closed(for_port)?);
                 }
                 1 => {
                     error!("Did not expect to receive an 'open' request from this side");
-                    return Ok(Self::control_socket_open(for_port).await?);
+                    return Ok(Self::control_socket_open(for_port)?);
                 }
                 _ => {
                     return Err(anyhow!(
@@ -451,7 +454,7 @@ impl Packet {
     |   2  |  4  | LEN  |
     +------+-----+------+
     */
-    async fn serialize(&self) -> Result<Vec<u8>> {
+    fn serialize(&self) -> Result<Vec<u8>> {
         let data = match self {
             Packet::Data { port, data } => {
                 let data_length = data.len();
@@ -461,10 +464,9 @@ impl Packet {
                 }
 
                 let mut length_and_data = vec![0u8; 2 + 4 + data_length];
-                // TODO: use little endian encoding?
-                length_and_data.write_u16(port.to_owned()).await?;
-                length_and_data.write_u32(data_length as u32).await?;
-                length_and_data.write_all(data).await?;
+                WriteBytesExt::write_u16::<LittleEndian>(&mut length_and_data, port.to_owned())?;
+                WriteBytesExt::write_u32::<LittleEndian>(&mut length_and_data, data_length as u32)?;
+                Write::write_all(&mut length_and_data, data)?;
                 length_and_data
             }
             Packet::Control { raw_data, .. } => raw_data.to_owned(),
@@ -488,13 +490,12 @@ impl Packet {
     Status 0 = Closed
     Status 1 = Open
     */
-    async fn control_socket_open(for_port: u16) -> Result<Self> {
+    fn control_socket_open(for_port: u16) -> Result<Self> {
         let mut raw_data = vec![0u8; 6];
-        // TODO: specify endian ordering?
-        raw_data.write_u16(0).await?;
-        raw_data.write_u8(1).await?;
-        raw_data.write_u16(for_port).await?;
-        raw_data.write_u8(1).await?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
+        WriteBytesExt::write_u8(&mut raw_data, 1)?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, for_port)?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 1)?;
 
         Ok(Self::Control {
             msg_type: 1,
@@ -503,13 +504,12 @@ impl Packet {
             raw_data,
         })
     }
-    async fn control_socket_closed(for_port: u16) -> Result<Self> {
+    fn control_socket_closed(for_port: u16) -> Result<Self> {
         let mut raw_data = vec![0u8; 6];
-        // TODO: specify endian ordering?
-        raw_data.write_u16(0).await?;
-        raw_data.write_u8(1).await?;
-        raw_data.write_u16(for_port).await?;
-        raw_data.write_u8(0).await?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
+        WriteBytesExt::write_u8(&mut raw_data, 1)?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, for_port)?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
 
         Ok(Self::Control {
             msg_type: 1,
@@ -530,9 +530,8 @@ impl Packet {
     */
     async fn keepalive() -> Result<Self> {
         let mut raw_data = vec![0u8; 3];
-        // TODO: specify endian ordering?
-        raw_data.write_u16(0).await?;
-        raw_data.write_u8(0).await?;
+        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
+        WriteBytesExt::write_u8(&mut raw_data, 0)?;
 
         Ok(Self::Control {
             msg_type: 0,
