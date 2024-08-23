@@ -241,7 +241,7 @@ impl L2CAPStreamMux {
                             trace!("Received keepalive control packet");
                             continue;
                         }
-                        if msg_type != 0 {
+                        if msg_type != 1 {
                             error!(
                                 "Do not know how to handle MSG_TYPE {msg_type}; dropping control packet"
                             );
