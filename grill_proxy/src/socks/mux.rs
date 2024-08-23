@@ -500,7 +500,7 @@ impl Packet {
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
         WriteBytesExt::write_u8(&mut raw_data, 1)?;
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, for_port)?;
-        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 1)?;
+        WriteBytesExt::write_u8(&mut raw_data, 1)?;
 
         Ok(Self::Control {
             msg_type: 1,
@@ -514,7 +514,7 @@ impl Packet {
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
         WriteBytesExt::write_u8(&mut raw_data, 1)?;
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, for_port)?;
-        WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
+        WriteBytesExt::write_u8(&mut raw_data, 0)?;
 
         Ok(Self::Control {
             msg_type: 1,
