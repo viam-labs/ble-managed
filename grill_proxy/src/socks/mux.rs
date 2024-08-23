@@ -168,7 +168,7 @@ impl L2CAPStreamMux {
         let handler = tokio::spawn(async move {
             loop {
                 let mut chunk_buf = vec![0u8; RECV_MTU as usize];
-                match l2cap_stream_read.read(&mut chunk_buf).await {
+                let n = match l2cap_stream_read.read(&mut chunk_buf).await {
                     Ok(n) if n > 0 => n,
                     // TODO: close all TCP streams in the event of L2CAP failure?
                     Ok(_) => {
@@ -180,6 +180,8 @@ impl L2CAPStreamMux {
                         break;
                     }
                 };
+
+                chunk_buf.truncate(n);
 
                 // TODO(benji): remove
                 debug!("received a chunk from l2cap of {chunk_buf:#?}");
