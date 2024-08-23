@@ -14,7 +14,7 @@ use super::chunker::Chunker;
 use anyhow::{anyhow, Result};
 use async_channel::{self, Receiver, Sender};
 use bluer::l2cap;
-use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
+use byteorder::{BigEndian, ByteOrder, LittleEndian, WriteBytesExt};
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
 use tokio::{
@@ -467,8 +467,8 @@ impl Packet {
                 }
 
                 let mut length_and_data = Vec::new();
-                WriteBytesExt::write_u16::<LittleEndian>(&mut length_and_data, port.to_owned())?;
-                WriteBytesExt::write_u32::<LittleEndian>(&mut length_and_data, data_length as u32)?;
+                WriteBytesExt::write_u16::<BigEndian>(&mut length_and_data, port.to_owned())?;
+                WriteBytesExt::write_u32::<BigEndian>(&mut length_and_data, data_length as u32)?;
                 Write::write_all(&mut length_and_data, data)?;
                 //TODO(benji): remove this debug
                 debug!("Created a data packet with bytes {length_and_data:#?}");
