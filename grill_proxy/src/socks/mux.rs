@@ -387,7 +387,7 @@ impl Packet {
             };
             let msg_type = msg_type_byte[0];
             if msg_type == 0 {
-                return Ok(Self::keepalive().await?);
+                return Ok(Self::keepalive()?);
             }
             if msg_type != 1 {
                 return Err(anyhow!("do not know how to handle 'msg_type' {msg_type}"));
@@ -447,7 +447,7 @@ impl Packet {
                 return Err(anyhow!("failed to read {length} bytes for data: {e}"));
             }
         };
-        Ok(Self::Data { port: 0, data })
+        Ok(Self::Data { port, data })
     }
 
     /*
@@ -533,7 +533,7 @@ impl Packet {
     | 2=0  |  1=0     |
     +------+----------+
     */
-    async fn keepalive() -> Result<Self> {
+    fn keepalive() -> Result<Self> {
         let mut raw_data = Vec::new();
         WriteBytesExt::write_u16::<LittleEndian>(&mut raw_data, 0)?;
         WriteBytesExt::write_u8(&mut raw_data, 0)?;
