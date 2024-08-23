@@ -26,8 +26,8 @@ impl Chunker {
     pub(crate) async fn read(&mut self, n: usize) -> Result<Vec<u8>> {
         let mut buffer = vec![0; n];
 
-        // If chunk cursor is empty or does not have enough bytes for read; grab new chunk.
-        if self.bytes_remaining_in_cursor() < n {
+        // While chunk cursor is empty or does not have enough bytes for read; grab new chunks.
+        while self.bytes_remaining_in_cursor() < n {
             let chunk = match self.reader.recv().await {
                 Ok(chunk) => chunk,
                 Err(e) => {

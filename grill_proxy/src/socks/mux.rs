@@ -180,6 +180,10 @@ impl L2CAPStreamMux {
                         break;
                     }
                 };
+
+                // TODO(benji): remove
+                debug!("received a chunk from l2cap of {chunk_buf:#?}");
+
                 if let Err(e) = l2cap_to_tcp_send.send(chunk_buf).await {
                     error!("Error sending to 'l2cap_to_tcp' channel; dropping chunk: {e}");
                     continue;
