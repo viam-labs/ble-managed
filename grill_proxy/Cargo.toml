@@ -1,12 +1,16 @@
 [package]
-name = "rust_viam_server"
+name = "viam_socks_forwarder"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.86"
+async-channel = "2.3.1"
 bluer = { version="0.17.3", features = ["bluetoothd", "l2cap"] }
+byteorder = "1.5.0"
+dashmap = "6.0.1"
 env_logger = "0.11.3"
 futures = "0.3.30"
 log = "0.4.22"
-tokio = { version = "1.38.0", features = ["io-std"] }
+tokio = { version = "1.38.0", features = ["io-std", "signal"] }
 uuid = "1.9.1"

@@ -2,16 +2,13 @@
 
 use std::{collections::HashSet, time::Duration};
 
+use anyhow::{anyhow, Result};
 use bluer::{
-    l2cap::{SocketAddr, Stream},
     AdapterEvent, Device, DeviceEvent, DeviceProperty, DiscoveryFilter, DiscoveryTransport,
 };
 use futures::{pin_mut, select, FutureExt, StreamExt};
 use log::{debug, info};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
-};
+use tokio::time::sleep;
 
 /// Finds previously paired device and its exposed PSM:
 ///
@@ -25,7 +22,7 @@ pub async fn find_device_and_psm(
     svc_uuid: uuid::Uuid,
     proxy_name_char_uuid: uuid::Uuid,
     psm_char_uuid: uuid::Uuid,
-) -> bluer::Result<(Device, u16)> {
+) -> Result<(Device, u16)> {
     info!(
         "Discovering on Bluetooth adapter {} with address {}\n",
         adapter.name(),
@@ -41,10 +38,7 @@ pub async fn find_device_and_psm(
     adapter.set_discovery_filter(filter).await?;
 
     if adapter.is_discovering().await? {
-        return Err(bluer::Error {
-            kind: bluer::ErrorKind::Failed,
-            message: "Must stop discovering outside of this process".to_string(),
-        });
+        return Err(anyhow!("must stop discovering outside of this process"));
     }
 
     debug!("start discover");
@@ -188,12 +182,9 @@ pub async fn find_device_and_psm(
                                                 return Ok((device, psm));
                                             }
                                             Err(e) => {
-                                                return Err(bluer::Error {
-                                                    kind: bluer::ErrorKind::Failed,
-                                                    message: format!(
-                                                        "Found PSM is not a valid u16: {e}"
-                                                    ),
-                                                });
+                                                return Err(anyhow!(
+                                                    "found PSM is not a valid u16: {e}"
+                                                ));
                                             }
                                         }
                                     }
@@ -206,40 +197,5 @@ pub async fn find_device_and_psm(
             _ => (), // Ignore all events beyond AddedDevice.
         }
     }
-    Err(bluer::Error {
-        kind: bluer::ErrorKind::Failed,
-        message: "Service and characteristic combination not found".to_string(),
-    })
-}
-
-/// Opens a new L2CAP connection to `Device` on `psm`.
-pub async fn connect_l2cap(device: &Device, psm: u16) -> bluer::Result<Stream> {
-    let addr_type = device.address_type().await?;
-    let target_sa = SocketAddr::new(device.remote_address().await?, addr_type, psm);
-
-    debug!("Connecting to L2CAP CoC at {:?}", &target_sa);
-    let stream = Stream::connect(target_sa).await?;
-
-    Ok(stream)
-}
-
-/// Writes `message` to `Stream`.
-pub async fn write_l2cap(message: String, stream: &mut Stream) -> bluer::Result<()> {
-    // Note that write_all will automatically split the buffer into
-    // multiple writes of MTU size.
-    stream
-        .write_all(message.as_bytes())
-        .await
-        .map_err(|e| bluer::Error {
-            kind: bluer::ErrorKind::Failed,
-            message: format!("Failed to write: {e}"),
-        })
-}
-
-/// Reads a string message from `Stream`.
-pub async fn read_l2cap(stream: &mut Stream) -> bluer::Result<String> {
-    let mtu_as_cap = stream.as_ref().recv_mtu()?;
-    let mut message_buf = vec![0u8; mtu_as_cap as usize];
-    stream.read(&mut message_buf).await.expect("read failed");
-    Ok(format!("{}", String::from_utf8_lossy(&message_buf)))
+    Err(anyhow!("service and characteristic combination not found"))
 }

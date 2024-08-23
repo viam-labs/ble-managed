@@ -1,13 +1,11 @@
-//! Advertises a BLE device with the Viam service UUID and a characteristic where a
-//! proxy device name can be be written to. Once a name is written, it scans for another
-//! BLE device with that name and a corresponding Viam service UUID and PSM characteristic.
-//! It then opens an L2CAP CoC socket over that advertised PSM. Finally it writes a "hello"
-//! message and reads one message.
+//! Runs the Viam grill proxy.
 
 mod central;
 mod peripheral;
+mod socks;
 
-use bluer::agent::{Agent, ReqResult};
+use anyhow::Result;
+use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
 use log::{debug, info};
 use uuid::uuid;
@@ -28,15 +26,18 @@ const SOCKS_PROXY_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-59
 /// Characteristic UUID for remote PSM.
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
 
+/// Utility function to return ok from box.
 async fn return_ok() -> ReqResult<()> {
     Ok(())
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> bluer::Result<()> {
-    env_logger::init();
-
-    debug!("getting bluer session");
+/// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
+/// name of this device can be read, and one to which the proxy device name can be be written. Once
+/// a name is written, scans for another BLE device with that proxy device name and a corresponding
+/// Viam service UUID and PSM characteristic. It then returns the device, the discoverd PSM, and
+/// the agent handle.
+async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHandle)> {
+    debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
     let agent = Agent {
@@ -48,7 +49,7 @@ async fn main() -> bluer::Result<()> {
         request_passkey: None,
         display_passkey: None,
 
-        // TODO(erd->benji): These work for POC but production where some on screen device should
+        // TODO(seergrills): These work for POC but production where some on screen device should
         // confirm.
         request_confirmation: Some(Box::new(move |req| {
             debug!("auto confirming passkey {}", req.passkey);
@@ -63,13 +64,13 @@ async fn main() -> bluer::Result<()> {
     };
     let handle = session.register_agent(agent).await?;
 
-    debug!("getting default adapter");
+    debug!("Getting default adapter");
     let adapter = session.default_adapter().await?;
     if !adapter.is_powered().await? {
         adapter.set_powered(true).await?;
     }
 
-    debug!("advertising self='{MANAGED_DEVICE_NAME}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
+    debug!("Advertising self='{MANAGED_DEVICE_NAME}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
     let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
         &adapter,
         MANAGED_DEVICE_NAME.to_string(),
@@ -78,7 +79,7 @@ async fn main() -> bluer::Result<()> {
         SOCKS_PROXY_NAME_CHAR_UUID,
     )
     .await?;
-    debug!("proxy device is '{proxy_device_name}'");
+    debug!("Proxy device is '{proxy_device_name}'");
 
     let (device, psm) = central::find_device_and_psm(
         &adapter,
@@ -89,18 +90,23 @@ async fn main() -> bluer::Result<()> {
     )
     .await?;
     debug!(
-        "found device='{}' that is waiting for l2cap connections on psm='{psm}'; connecting",
+        "Found device='{}' that is waiting for l2cap connections on psm='{psm}'; connecting",
         device.remote_address().await?
     );
 
-    let mut stream = central::connect_l2cap(&device, psm).await?;
+    Ok((device, psm, handle))
+}
 
-    central::write_l2cap("hello".to_string(), &mut stream).await?;
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    env_logger::init();
+    info!("Started main method");
 
-    let msg = central::read_l2cap(&mut stream).await?;
-    info!("Received message '{msg}'");
+    let (device, psm, handle) = find_viam_proxy_device_and_psm().await?;
 
-    debug!("done. goodbye");
+    socks::start_proxy(device, psm).await?;
+
+    info!("Finished main method");
     drop(handle);
     Ok(())
 }

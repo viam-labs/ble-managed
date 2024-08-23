@@ -100,7 +100,7 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
     }).onError(print);
 
     unawaited(socksServerProxy
-        .addServerSocket(L2CapChannelServerSocketUtils.acceptSingle(chan)));
+        .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
   }).asFuture();
 }
 
