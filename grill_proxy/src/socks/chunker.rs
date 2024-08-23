@@ -19,15 +19,15 @@ impl Chunker {
         Chunker { reader, cursor }
     }
 
+    fn bytes_remaining_in_cursor(&self) -> usize {
+        self.cursor.get_ref().len() - self.cursor.position() as usize
+    }
+
     pub(crate) async fn read(&mut self, n: usize) -> Result<Vec<u8>> {
         let mut buffer = vec![0; n];
 
         // If chunk cursor is empty or does not have enough bytes for read; grab new chunk.
-        let pos = self.cursor.position();
-        let len = self.cursor.get_ref().len() - n;
-        debug!("Checking if {pos} is >= {len}");
-
-        if self.cursor.position() as usize >= self.cursor.get_ref().len() - n {
+        if self.bytes_remaining_in_cursor() < n {
             let chunk = match self.reader.recv().await {
                 Ok(chunk) => chunk,
                 Err(e) => {
