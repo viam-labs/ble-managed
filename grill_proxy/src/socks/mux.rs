@@ -71,7 +71,7 @@ impl L2CAPStreamMux {
 
     /// Incorporates a new TCP stream into the multiplexer.
     pub(crate) async fn add_tcp_stream(&mut self, stream: TcpStream) -> Result<()> {
-        debug!("Adding new socket to multiplexer...");
+        debug!("Adding new TCP stream to multiplexer...");
 
         // Get new "port" value from atomic (start at 1 if overflow).
         if self.next_port.load(Relaxed) > 65534 {
@@ -97,7 +97,6 @@ impl L2CAPStreamMux {
         // 'tcp_to_l2cap' channel.
         let handler = tokio::spawn(async move {
             loop {
-                debug!("Reading request from TCP stream for 'port' {port}...");
                 // TODO: use a non-arbitrary cap here.
                 let mut data = vec![0u8; 1024];
                 let n = match tcp_stream_read.read(&mut data).await {
@@ -180,11 +179,7 @@ impl L2CAPStreamMux {
                         break;
                     }
                 };
-
                 chunk_buf.truncate(n);
-
-                // TODO(benji): remove
-                debug!("received a chunk from l2cap of {chunk_buf:#?}");
 
                 if let Err(e) = l2cap_to_tcp_send.send(chunk_buf).await {
                     error!("Error sending to 'l2cap_to_tcp' channel; dropping chunk: {e}");
@@ -210,9 +205,6 @@ impl L2CAPStreamMux {
 
                 match pkt {
                     Packet::Data { port, data } => {
-                        // TODO(benji): remove this debug.
-                        debug!("Received a data packet back!");
-
                         if data.len() == 0 {
                             warn!("Empty packet; dropping data packet");
                             continue;
@@ -304,9 +296,6 @@ impl L2CAPStreamMux {
                                 continue;
                             }
                         };
-
-                        // TODO(benji): remove this debug.
-                        debug!("Sending packet {serialized_packet:#?} over L2CAP where packet was {packet:#?}");
 
                         if let Err(e) = l2cap_stream_write.write_all(&serialized_packet).await {
                             error!("Error writing to L2CAP stream; dropping packet: {e}");
@@ -476,8 +465,6 @@ impl Packet {
                 WriteBytesExt::write_u16::<LittleEndian>(&mut length_and_data, port.to_owned())?;
                 WriteBytesExt::write_u32::<LittleEndian>(&mut length_and_data, data_length as u32)?;
                 Write::write_all(&mut length_and_data, data)?;
-                //TODO(benji): remove this debug
-                debug!("Created a data packet with bytes {length_and_data:#?}");
                 length_and_data
             }
             Packet::Control { raw_data, .. } => raw_data.to_owned(),
