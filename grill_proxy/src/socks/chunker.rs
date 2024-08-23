@@ -4,6 +4,7 @@ use std::io::Cursor;
 
 use anyhow::{anyhow, Result};
 use async_channel::Receiver;
+use log::debug;
 use tokio::io::AsyncReadExt;
 
 /// A chunker to read chunks of bytes from an `async_channel::Receiver`.
@@ -28,7 +29,9 @@ impl Chunker {
                 Err(e) => {
                     return Err(anyhow!("could not get new chunk: {e}"));
                 }
-            }
+            };
+            // TODO(benji): remove this debug
+            debug!("Got a new chunk!");
         }
 
         if let Err(e) = self.chunk.read_exact(&mut buffer).await {
