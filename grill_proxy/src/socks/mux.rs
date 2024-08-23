@@ -292,6 +292,10 @@ impl L2CAPStreamMux {
                                 continue;
                             }
                         };
+
+                        // TODO(benji): Remove this trace.
+                        trace!("Writing the following bytes to the l2cap_stream: {serialized_packet:#?}, packet was {packet:#?}");
+
                         if let Err(e) = l2cap_stream_write.write_all(&serialized_packet).await {
                             error!("Error writing to L2CAP stream; dropping packet: {e}");
                             continue;
