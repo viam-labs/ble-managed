@@ -2,7 +2,6 @@
 
 use anyhow::{anyhow, Result};
 use async_channel::Receiver;
-use log::debug;
 use tokio::io::AsyncWriteExt;
 
 /// A chunker to read chunks of bytes from an `async_channel::Receiver`.
@@ -28,9 +27,6 @@ impl Chunker {
                     return Err(anyhow!("could not get new chunk: {e}"));
                 }
             };
-            //
-            // TODO(benji): remove this debug
-            debug!("Got a new chunk!");
 
             match self.chunk.write(&new_chunk).await {
                 Ok(n) if n > 0 => {}
