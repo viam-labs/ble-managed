@@ -322,7 +322,7 @@ impl L2CAPStreamMux {
         let tcp_to_l2cap_send = self.tcp_to_l2cap_send.clone();
         let handler = tokio::spawn(async move {
             loop {
-                let keepalive_packet = match Packet::keepalive().await {
+                let keepalive_packet = match Packet::keepalive() {
                     Ok(keepalive_packet) => keepalive_packet,
                     Err(e) => {
                         error!("Could not create keepalive packet: {e}");
