@@ -135,3 +135,12 @@ app.*.symbols
 !.vscode/settings.json
 
 main
+
+# Grill proxy dpkg building
+*.dsc
+*.tar.gz
+*.buildinfo
+*.changes
+*.ddeb
+socks-forwarder/debian/socks-forwarder
+socks-forwarder/debian/socks-forwarder.*

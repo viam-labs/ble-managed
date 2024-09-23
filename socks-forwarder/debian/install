@@ -1,0 +1,2 @@
+lib/systemd/system/*
+target/release/socks-forwarder usr/bin/

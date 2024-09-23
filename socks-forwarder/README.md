@@ -11,7 +11,7 @@ and can route all SOCKS requests through those proxies.
 * Build and install latest bluez (https://github.com/bluez/bluez) from source.
 
 Can only build on linux. Run `make setup` (will only try `apt`) and `make build` to build. Run
-`make` or `make run` to run.
+`make run` to run.
 
 ## Development Tips
 

@@ -1,5 +1,5 @@
 [package]
-name = "viam_socks_forwarder"
+name = "socks-forwarder"
 version = "0.1.0"
 edition = "2021"
 

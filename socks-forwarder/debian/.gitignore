@@ -1,0 +1,7 @@
+.debhelper/
+debhelper-build-stamp
+files
+viam-sync.debhelper.log
+viam-sync.postrm.debhelper
+viam-sync.substvars
+viam-sync/
