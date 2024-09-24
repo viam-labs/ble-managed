@@ -144,3 +144,4 @@ main
 *.ddeb
 socks-forwarder/debian/socks-forwarder
 socks-forwarder/debian/socks-forwarder.*
+socks-forwarder-dbgsym_0.1_arm64.deb
