@@ -5,12 +5,12 @@ mod mux;
 
 use anyhow::{anyhow, Result};
 use bluer::l2cap;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal, SignalKind};
 
 /// The port on which to start the SOCKS proxy.
-const PORT: u16 = 5000;
+const PORT: u16 = 1080;
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
 const RECV_MTU: u16 = 65535;
@@ -53,6 +53,11 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
                 break;
             },
         }
+    }
+
+    // Disconnect device after proxy is done running.
+    if let Err(e) = device.disconnect().await {
+        warn!("Error disconnecting device (may have already been disconnected): {e}");
     }
     Ok(())
 }
