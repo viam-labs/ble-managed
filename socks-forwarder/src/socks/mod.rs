@@ -16,8 +16,9 @@ const PORT: u16 = 1080;
 const RECV_MTU: u16 = 65535;
 
 /// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
-/// created against the `device` on `psm`.
-pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
+/// created against the `device` on `psm`. Returns true if SOCKS proxy should be restarted
+/// (start listening for new connections again), and false if not.
+pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
     let bind_address = format!("127.0.0.1:{PORT}");
     let listener = TcpListener::bind(bind_address.clone()).await?;
 
@@ -42,7 +43,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
                 }
             },
             _ = mux.wait_for_stop_due_to_disconnect() => {
-                break;
+                return Ok(true);
             }
             _ = sigterm.recv() => {
                 info!("Stopping SOCKS forwarder (SIGTERM)...");
@@ -55,11 +56,13 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
         }
     }
 
-    // Disconnect device after proxy is done running.
-    if let Err(e) = device.disconnect().await {
-        warn!("Error disconnecting device (may have already been disconnected): {e}");
+    // Disconnect device if still connected after proxy is done running.
+    if device.is_connected().await? {
+        if let Err(e) = device.disconnect().await {
+            warn!("Error disconnecting device (may have already been disconnected): {e}");
+        }
     }
-    Ok(())
+    Ok(false)
 }
 
 /// Opens a new L2CAP stream to `Device` on `psm`.

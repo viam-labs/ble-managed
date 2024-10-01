@@ -196,7 +196,6 @@ impl L2CAPStreamMux {
                     continue;
                 }
             }
-            info!("Broke pipe_in_l2cap loop");
         });
         self.tasks.push(handler);
     }
@@ -211,12 +210,11 @@ impl L2CAPStreamMux {
                     Ok(pkt) => pkt,
                     Err(e) => {
                         // Inability to deserialize a packet indicates degradation or disconnection
-                        // of the L2CAP connection; send to stop channel.
+                        // of the L2CAP connection; send to stop_due_to_disconnect channel.
                         warn!("Error deserializing packet; dropping data packet: {e}");
                         if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                             error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
                         }
-                        info!("Sent message to stop_due_to_dinsconnect channel");
                         break;
                     }
                 };
@@ -357,7 +355,6 @@ impl L2CAPStreamMux {
     /// Waits for a signal due to L2CAP disconnection and `stop`s the mux if it receives
     /// one.
     pub(crate) async fn wait_for_stop_due_to_disconnect(&mut self) {
-        info!("Waiting for stop due to disconnect");
         match self.stop_due_to_disconnect_receive.recv().await {
             Ok(_) => {
                 warn!("L2CAP disconnection detected");
@@ -367,7 +364,6 @@ impl L2CAPStreamMux {
                 error!("Error receiving from 'stop_due_to_disconnect_receive' channel: {e}");
             }
         }
-        info!("Returning from stop due to disconnect");
     }
 
     /// Idempotently stops the mux.

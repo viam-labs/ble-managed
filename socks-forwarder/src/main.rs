@@ -102,11 +102,16 @@ async fn main() -> Result<()> {
     env_logger::init();
     info!("Started main method");
 
-    let (device, psm, handle) = find_viam_proxy_device_and_psm().await?;
+    loop {
+        let (device, psm, handle) = find_viam_proxy_device_and_psm().await?;
 
-    socks::start_proxy(device, psm).await?;
+        if !socks::start_proxy(device, psm).await? {
+            drop(handle);
+            break;
+        }
+        drop(handle);
+    }
 
     info!("Finished main method");
-    drop(handle);
     Ok(())
 }
