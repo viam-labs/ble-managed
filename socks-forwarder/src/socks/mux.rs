@@ -55,7 +55,8 @@ impl L2CAPStreamMux {
         let tasks = Vec::new();
 
         let (tcp_to_l2cap_send, tcp_to_l2cap_receive) = async_channel::unbounded::<Packet>();
-        let (stop_due_to_disconnect_send, stop_due_to_disconnect_receive) = async_channel::bounded::<bool>(1);
+        let (stop_due_to_disconnect_send, stop_due_to_disconnect_receive) =
+            async_channel::bounded::<bool>(1);
 
         let mut mux = L2CAPStreamMux {
             next_port,
@@ -174,7 +175,6 @@ impl L2CAPStreamMux {
         mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
         l2cap_to_tcp_send: Sender<Vec<u8>>,
     ) {
-        let stop_due_to_disconnect_send = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
             loop {
                 let mut chunk_buf = vec![0u8; RECV_MTU as usize];
@@ -185,13 +185,7 @@ impl L2CAPStreamMux {
                         break;
                     }
                     Err(e) => {
-                        // Receiving an error from L2CAP stream read indicates a severed
-                        // connection; send to stop channel.
                         warn!("Error reading from L2CAP stream: {e}");
-                        if let Err(e) = stop_due_to_disconnect_send.send(true).await {
-                           error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
-                        }
-                        info!("Sent message to stop_due_to_dinsconnect channel");
                         break;
                     }
                 };
@@ -210,13 +204,20 @@ impl L2CAPStreamMux {
     /// Reads from `l2cap_to_tcp_chunker` to TCP streams.
     fn pipe_out_tcp(&mut self, mut l2cap_to_tcp_chunker: Chunker) {
         let port_to_tcp_stream = self.port_to_tcp_stream.clone();
+        let stop_due_to_disconnect_send = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
             loop {
                 let pkt = match Packet::deserialize(&mut l2cap_to_tcp_chunker).await {
                     Ok(pkt) => pkt,
                     Err(e) => {
-                        error!("Error deserializing packet; dropping data packet: {e}");
-                        continue;
+                        // Inability to deserialize a packet indicates degradation or disconnection
+                        // of the L2CAP connection; send to stop channel.
+                        warn!("Error deserializing packet; dropping data packet: {e}");
+                        if let Err(e) = stop_due_to_disconnect_send.send(true).await {
+                            error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
+                        }
+                        info!("Sent message to stop_due_to_dinsconnect channel");
+                        break;
                     }
                 };
 
@@ -361,10 +362,10 @@ impl L2CAPStreamMux {
             Ok(_) => {
                 warn!("L2CAP disconnection detected");
                 self.stop();
-            },
+            }
             Err(e) => {
                 error!("Error receiving from 'stop_due_to_disconnect_receive' channel: {e}");
-            },
+            }
         }
         info!("Returning from stop due to disconnect");
     }
