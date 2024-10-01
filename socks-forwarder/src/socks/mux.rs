@@ -37,6 +37,12 @@ pub(crate) struct L2CAPStreamMux {
     tcp_to_l2cap_send: Arc<Sender<Packet>>,
     // Group of tasks.
     tasks: Vec<JoinHandle<()>>,
+    // Stopped or not (mux can be stopped when L2CAP is disconnected or when mux is dropped).
+    stopped: bool,
+    // Channel to send stop requests due to L2CAP disconnection.
+    stop_due_to_disconnect_send: Arc<Sender<bool>>,
+    // Channel to receive stop requests due to L2CAP disconnection.
+    stop_due_to_disconnect_receive: Receiver<bool>,
 }
 
 impl L2CAPStreamMux {
@@ -49,12 +55,16 @@ impl L2CAPStreamMux {
         let tasks = Vec::new();
 
         let (tcp_to_l2cap_send, tcp_to_l2cap_receive) = async_channel::unbounded::<Packet>();
+        let (stop_due_to_disconnect_send, stop_due_to_disconnect_receive) = async_channel::bounded::<bool>(1);
 
         let mut mux = L2CAPStreamMux {
             next_port,
             port_to_tcp_stream,
             tcp_to_l2cap_send: Arc::new(tcp_to_l2cap_send),
             tasks,
+            stopped: false,
+            stop_due_to_disconnect_send: Arc::new(stop_due_to_disconnect_send),
+            stop_due_to_disconnect_receive,
         };
 
         let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
@@ -119,7 +129,7 @@ impl L2CAPStreamMux {
                         break;
                     }
                     Err(e) => {
-                        error!("Error reading from TCP stream; closing for 'port' {port}: {e}");
+                        info!("Could not read from TCP stream (likely closed); closing for 'port' {port}: {e}");
                         // Send a close control packet.
                         let control_packet = match Packet::control_socket_closed(port) {
                             Ok(control_packet) => control_packet,
@@ -164,18 +174,23 @@ impl L2CAPStreamMux {
         mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
         l2cap_to_tcp_send: Sender<Vec<u8>>,
     ) {
+        let stop_due_to_disconnect_send = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
             loop {
                 let mut chunk_buf = vec![0u8; RECV_MTU as usize];
                 let n = match l2cap_stream_read.read(&mut chunk_buf).await {
                     Ok(n) if n > 0 => n,
-                    // TODO: close all TCP streams in the event of L2CAP failure?
                     Ok(_) => {
                         info!("L2CAP stream closed");
                         break;
                     }
                     Err(e) => {
-                        error!("Error reading from L2CAP stream: {e}");
+                        // Receiving an error from L2CAP stream read indicates a severed
+                        // connection; send to stop channel.
+                        warn!("Error reading from L2CAP stream: {e}");
+                        if let Err(e) = stop_due_to_disconnect_send.send(true).await {
+                           error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
+                        }
                         break;
                     }
                 };
@@ -225,8 +240,8 @@ impl L2CAPStreamMux {
                         trace!("Data in received packet is {data:#?}");
 
                         if let Err(e) = muxed_stream.writer.write(&data).await {
-                            error!(
-                                "Error writing to TCP stream for 'port' {port}; dropping data packet: {e}",
+                            info!(
+                                "Could not write to TCP stream for 'port' {port} (stream may be closed); dropping data packet: {e}",
                             );
                             continue;
                         }
@@ -335,16 +350,37 @@ impl L2CAPStreamMux {
         });
         self.tasks.push(handler);
     }
+
+    /// Waits for a signal due to L2CAP disconnection and `stop`s the mux if it receives
+    /// one.
+    pub(crate) async fn wait_for_stop_due_to_disconnect(&mut self) {
+       match self.stop_due_to_disconnect_receive.recv().await {
+            Ok(_) => {
+                warn!("L2CAP disconnection detected");
+                self.stop();
+            },
+            Err(e) => {
+                error!("Error receiving from 'stop_due_to_disconnect_receive' channel: {e}");
+            },
+       }
+    }
+
+    /// Idempotently stops the mux.
+    fn stop(&mut self) {
+        if !self.stopped {
+            info!("Stopping multiplexer...");
+            while let Some(task) = self.tasks.pop() {
+                task.abort();
+            }
+            self.stopped = true;
+            info!("Multiplexer stopped");
+        }
+    }
 }
 
 impl Drop for L2CAPStreamMux {
     fn drop(&mut self) {
-        info!("Dropping multiplexer...");
-        while let Some(task) = self.tasks.pop() {
-            // TODO: more cleanly shut down tasks with a cancelation signal instead of abort.
-            task.abort();
-        }
-        info!("Multiplexer dropped");
+        self.stop();
     }
 }
 

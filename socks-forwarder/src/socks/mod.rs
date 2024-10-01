@@ -41,6 +41,9 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
                     return Err(anyhow!("could not add mux TCP stream: {e}"));
                 }
             },
+            _ = mux.wait_for_stop_due_to_disconnect() => {
+                break;
+            }
             _ = sigterm.recv() => {
                 info!("Stopping SOCKS forwarder (SIGTERM)...");
                 break;
