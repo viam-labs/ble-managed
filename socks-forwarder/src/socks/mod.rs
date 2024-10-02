@@ -35,6 +35,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
+    let mut restart = false;
     loop {
         tokio::select! {
             Ok((tcp_stream, _addr)) = listener.accept() => {
@@ -43,7 +44,8 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
                 }
             },
             _ = mux.wait_for_stop_due_to_disconnect() => {
-                return Ok(true);
+                restart = true;
+                break;
             }
             _ = sigterm.recv() => {
                 info!("Stopping SOCKS forwarder (SIGTERM)...");
@@ -61,8 +63,9 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
         if let Err(e) = device.disconnect().await {
             warn!("Error disconnecting device (may have already been disconnected): {e}");
         }
+        info!("Disconnected from remote device");
     }
-    Ok(false)
+    Ok(restart)
 }
 
 /// Opens a new L2CAP stream to `Device` on `psm`.
