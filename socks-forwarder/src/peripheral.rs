@@ -13,6 +13,7 @@ use futures::{pin_mut, FutureExt, StreamExt};
 use log::{debug, info};
 use std::{str::from_utf8, time::Duration};
 use tokio::io::AsyncReadExt;
+use tokio::signal::unix::{signal, SignalKind};
 use uuid::Uuid;
 
 /// Advertises a peripheral device:
@@ -90,6 +91,9 @@ pub async fn advertise_and_find_proxy_device_name(
     info!("Waiting for proxy device name to be written. Press Ctrl+C to quit.");
     pin_mut!(char_control);
 
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+
     loop {
         tokio::select! {
             evt = char_control.next() => {
@@ -121,6 +125,12 @@ pub async fn advertise_and_find_proxy_device_name(
                     },
                     None => break,
                 }
+            },
+            _ = sigterm.recv() => {
+                break;
+            },
+            _ = sigint.recv() => {
+                break;
             },
         }
     }
