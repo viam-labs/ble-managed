@@ -1,2 +1,4 @@
 # ble-managed
-Benji-Eric Enterprises
+
+Code to run a BLE-SOCKS bridge. See READMEs for socks-forwarder and
+phone_proxy.
