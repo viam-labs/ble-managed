@@ -15,3 +15,7 @@ phone proxy.
 To run the app, call `flutter run` from within this directory with a physical
 phone connected via serial. The app cannot be run with a simulated device, as
 bluetooth functionality is limited to physical devices.
+
+# Copying and using in another app
+
+TODO(benji).
