@@ -85,6 +85,12 @@ void main() {
       startBLESocksPhoneProxy(mobileDevice, machineToManage);
       runApp(const MyApp());
     }, (error, stackTrace) {
+      if (error is L2CapDisconnectedError) {
+        logger.w('disconnection detected');
+        // L2CapDisconnectedError indicates that the BLE connection to the
+        // managed machine has been severed. Add code here to restart this
+        // zone and/or other pieces of your flutter app.
+      }
       logger.e('error running BLE-SOCKS phone proxy: $error');
     },
   );
