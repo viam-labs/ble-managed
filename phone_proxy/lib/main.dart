@@ -88,14 +88,6 @@ void main() {
       logger.e('error running BLE-SOCKS phone proxy: $error');
     },
   );
-
-  // TODO(benji): correct this section.
-  //
-  // If you would like to stop the phone proxy and restart it with a new `machineToManage`
-  // value. Use the following code:
-  //
-  // stopBLESocksPhoneProxy();
-  // startBLESocksPhoneProxy(mobileDevice, newMachineToManage);
 }
 
 /* No need to mutate code beneath this line. */
