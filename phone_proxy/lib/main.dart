@@ -1,4 +1,3 @@
-// ignore_for_file: avoid_print, public_member_api_docs
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -7,79 +6,153 @@ import 'package:blev/ble.dart';
 import 'package:blev/ble_central.dart';
 import 'package:blev/ble_peripheral.dart';
 import 'package:blev/ble_socket.dart';
+
 import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socks5_proxy/socks_server.dart';
 
-List<String> lines = [];
+// The following three classes are examples of a basic flutter app setup.
+// Replace them with the implementation of your flutter app.
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-// This should be stored somewhere in a mobile app.
-var deviceName = 'd3e535ca.viam.cloud';
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+        title: 'Phone Proxy', home: MyHomePage(title: 'Phone Proxy'));
+  }
+}
+class MyHomePage extends StatefulWidget {
+  const MyHomePage({super.key, required this.title});
 
-var machineToManage = 'mac1.loc1.viam.cloud';
+  final String title;
 
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+class _MyHomePageState extends State<MyHomePage> {
+  _MyHomePageState() {
+    loadData();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          title: Text(widget.title),
+        ));
+  }
+
+  Future<void> loadData() async {
+    while (true) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      setState(() {});
+    }
+  }
+}
+
+// `main` is an example of how your flutter app might call into `startBLESocksPhoneProxy`
+// Specifically, you will have to provide the values for `mobileDevice` and
+// `machineToManage`.
+void main() {
+  // `mobileDevice` should be stored somewhere in a mobile app. It should be
+  // unique to a mobile device such that `startBLESocksPhoneProxy` can:
+  // - Advertise `mobileDevice` as a readable characteristic
+  // - Write `mobileDevice` to a characteristic on the machine to manage
+  // - Allow L2CAP connections from that managed machine
+  //
+  // You may want to hardcode a unique `mobileDevice` value in each instance of
+  // your app.
+  var mobileDevice = 'd3e535a.viam.cloud';
+
+  // `machineToManage` should be the machine name (FQDN) of the machine for
+  // which the mobile device is trying to proxy traffic. Assuming it is
+  // running the `socks-forwarder`, the managed machine should already be:
+  // - Advertising `machineToManage` as a readable characteristic
+  // - Adveristing a writable characteristic (encrypted) to which the mobile
+  //   device will need to write its `mobileDevice` value
+  // - Ready to establish an L2CAP connection for SOCKS forwarding once a value
+  //   is written to the above characteristic
+  //
+  // You may want to ask users to enter the `machineToManage` value as part
+  // of app setup.
+  var machineToManage = 'mac1.loc1.viam.cloud';
+
+  runZonedGuarded(
+    () {
+      startBLESocksPhoneProxy(mobileDevice, machineToManage);
+      runApp(const MyApp());
+    }, (error, stackTrace) {
+      logger.e('error running BLE-SOCKS phone proxy: $error');
+    },
+  );
+
+  // TODO(benji): correct this section.
+  //
+  // If you would like to stop the phone proxy and restart it with a new `machineToManage`
+  // value. Use the following code:
+  //
+  // stopBLESocksPhoneProxy();
+  // startBLESocksPhoneProxy(mobileDevice, newMachineToManage);
+}
+
+/* No need to mutate code beneath this line. */
+
+var logger = Logger(printer: SimplePrinter(colors: false));
+
+// Hardcoded Viam BLE UUIDs known by both this code and SOCKS forwarder code.
 const viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
 const viamSocksProxyPSMCharUUID = 'ab76ead2-b6e6-4f12-a053-61cd0eed19f9';
 const viamManagedMachineNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d7';
 const viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
 
-void main() {
-  runZoned(
-    () {
-      WidgetsFlutterBinding.ensureInitialized();
-      Permission.bluetoothConnect
-          .request()
-          .then((status) => Permission.bluetoothScan.request())
-          .then((status) => Permission.bluetoothAdvertise.request())
-          .then((status) {
-        BlePeripheral.create().then((blePeriph) {
-          final stateStream = blePeriph.getState();
-          late StreamSubscription<AdapterState> streamSub;
-          streamSub = stateStream.listen((state) {
-            if (state == AdapterState.poweredOn) {
-              streamSub.cancel();
-              initializeProxy(blePeriph);
-            }
-          });
-        });
-        BleCentral.create().then((bleCentral) {
-          final stateStream = bleCentral.getState();
-          late StreamSubscription<AdapterState> streamSub;
-          streamSub = stateStream.listen((state) {
-            if (state == AdapterState.poweredOn) {
-              streamSub.cancel();
-              manageMachine(bleCentral, machineToManage);
-            }
-          });
-        });
-      }).catchError((error) {
-        print('error requesting bluetooth permissions $error');
-      });
+// Give some BLE operations a few retries for resiliency.
+const numRetries = 3;
 
-      runApp(const MyApp());
-    },
-    zoneSpecification: ZoneSpecification(
-      print: (self, parent, zone, line) async {
-        if (lines.length > 30) {
-          lines.removeAt(0);
+void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
+  WidgetsFlutterBinding.ensureInitialized();
+  Permission.bluetoothConnect
+      .request()
+      .then((status) => Permission.bluetoothScan.request())
+      .then((status) => Permission.bluetoothAdvertise.request())
+      .then((status) {
+    BlePeripheral.create().then((blePeriph) {
+      final stateStream = blePeriph.getState();
+      late StreamSubscription<AdapterState> streamSub;
+      streamSub = stateStream.listen((state) {
+        if (state == AdapterState.poweredOn) {
+          streamSub.cancel();
+          initializeProxy(blePeriph, mobileDevice, machineToManage);
         }
-        lines.add('${DateTime.now()}: $line');
-        parent.print(zone, line);
-      },
-    ),
-  );
+      });
+    });
+    BleCentral.create().then((bleCentral) {
+      final stateStream = bleCentral.getState();
+      late StreamSubscription<AdapterState> streamSub;
+      streamSub = stateStream.listen((state) {
+        if (state == AdapterState.poweredOn) {
+          streamSub.cancel();
+          manageMachine(bleCentral, mobileDevice, machineToManage);
+        }
+      });
+    });
+  }).catchError((error) {
+    logger.e('error requesting bluetooth permissions: $error');
+  });
 }
 
-Future<void> initializeProxy(BlePeripheral blePeriph) async {
+Future<void> initializeProxy(BlePeripheral blePeriph, String mobileDevice, machineToManage) async {
   final (proxyPSM, proxyChanStream) = await blePeriph.publishL2capChannel();
-  await advertiseProxyPSM(blePeriph, proxyPSM);
+  await advertiseProxyPSM(blePeriph, proxyPSM, mobileDevice);
   await listenAndProxySOCKS(proxyChanStream);
 }
 
-Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm) async {
-  print('advertising self ($deviceName) and publishing SOCKS5 proxy PSM: $psm');
+Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm, String mobileDevice) async {
+  logger.i('advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
   await blePeriph.addReadOnlyService(viamSvcUUID, {
-    viamSocksProxyNameCharUUID: deviceName,
+    viamSocksProxyNameCharUUID: mobileDevice,
     viamSocksProxyPSMCharUUID: '$psm',
   });
   await blePeriph.startAdvertising();
@@ -87,53 +160,63 @@ Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm) async {
 
 Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   var chanCount = 0;
-  print('waiting for new L2CAP connections to proxy');
+  logger.i('waiting for new L2CAP connections to proxy');
 
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
-    print('serve channel $thisCount as a SOCKS5 server');
+    logger.i('serve channel $thisCount as a SOCKS5 server');
     final socksServerProxy = SocksServer();
     socksServerProxy.connections.listen((connection) async {
-      print(
+      logger.i(
           'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
       await connection.forward(allowIPv6: true);
-    }).onError(print);
+    }).onError((error) { logger.e('error listening for connections: $error'); });
 
     unawaited(socksServerProxy
         .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
   }).asFuture();
 }
 
-Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
-  print('scanning for $machineName now');
+Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineToManage) async {
+  logger.i('scanning for $machineToManage now');
   late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
     (periphInfo) {
       deviceSub.pause();
-      print('found ${periphInfo.name}; connecting...');
+      logger.i('found ${periphInfo.name}; connecting');
       bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
-        print('connected to $machineName');
+        logger.i('connected to $machineToManage');
 
-        final viamSvc = periph.services.cast<BleService?>().firstWhere(
-            (svc) => svc != null && svc.id == viamSvcUUID,
-            orElse: () => null);
+        BleService? viamSvc;
+        for (int i = 0; i < numRetries; i++) {
+          viamSvc = periph.services.cast<BleService?>().firstWhere(
+              (svc) => svc != null && svc.id == viamSvcUUID,
+              orElse: () => null);
+          if (viamSvc != null) {
+            break;
+          }
+        }
         if (viamSvc == null) {
-          // Note(erd): this could use some retry logic
-          print("viam service missing; disconnecting");
+          logger.e("expected service missing; disconnecting");
           await periph.disconnect();
           deviceSub.resume();
           return;
         }
 
-        final periphNameChar = viamSvc.characteristics
-            .cast<BleCharacteristic?>()
-            .firstWhere(
-                (char) =>
-                    char != null && char.id == viamManagedMachineNameCharUUID,
-                orElse: () => null);
+        BleCharacteristic? periphNameChar;
+        for (int i = 0; i < numRetries; i++) {
+          periphNameChar = viamSvc.characteristics
+              .cast<BleCharacteristic?>()
+              .firstWhere(
+                  (char) =>
+                      char != null && char.id == viamManagedMachineNameCharUUID,
+                  orElse: () => null);
+          if (periphNameChar != null) {
+            break;
+          }
+        }
         if (periphNameChar == null) {
-          // Note(erd): this could use some retry logic
-          print(
+          logger.e(
               'did not find needed periph name char after discovery; disconnecting');
           await periph.disconnect();
           deviceSub.resume();
@@ -141,9 +224,8 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
         }
 
         final periphName = utf8.decode((await periphNameChar.read())!);
-        if (periphName != machineName) {
-          // Note(erd): this could use some retry logic
-          print('found a different viam machine $periphName; disconnecting');
+        if (periphName != machineToManage) {
+          logger.e('found a different machine $periphName; disconnecting');
           await periph.disconnect();
           deviceSub.resume();
           return;
@@ -157,80 +239,32 @@ Future<void> manageMachine(BleCentral bleCentral, String machineName) async {
                 (char) => char != null && char.id == viamSocksProxyNameCharUUID,
                 orElse: () => null);
         if (proxyNameChar == null) {
-          print('did not find needed PSM char after discovery');
+          logger.w('did not find needed PSM char after discovery');
           await Future<void>.delayed(const Duration(seconds: 1));
-          print('disconnecting from machine and trying again');
+          logger.i('disconnecting from machine and trying again');
           await periph.disconnect();
-          unawaited(manageMachine(bleCentral, machineName));
+          unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
           return;
         }
 
-        print('matched desired viam machine $periphName; writing our name now');
+        logger.i('matched desired machine $periphName; writing our name now');
 
         try {
-          await proxyNameChar.write(Uint8List.fromList(deviceName.codeUnits));
+          await proxyNameChar.write(Uint8List.fromList(mobileDevice.codeUnits));
         } catch (error) {
-          print(
-              'error writing characteristic $error; disconnecting from machine and trying again');
+          logger.e(
+              'error writing characteristic: $error; disconnecting from machine and trying again');
           await periph.disconnect();
-          unawaited(manageMachine(bleCentral, machineName));
+          unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
           return;
         }
 
-        print('viam machine knows our name and we will wait for a connection');
+        logger.i('machine to manage knows our name and we will wait for a connection');
       }).catchError((error) {
-        print('error connecting $error; will try again');
-        unawaited(manageMachine(bleCentral, machineName));
+        logger.e('error establishing connection with machine to manage: $error; will try again');
+        unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
       });
     },
-    onError: (Object e) => print('connectAndTalk failed: $e'),
+    onError: (Object e) => logger.e('manageMachine failed: $e'),
   );
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-        title: 'Phone Proxy', home: MyHomePage(title: 'Phone Proxy'));
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  _MyHomePageState() {
-    loadData();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          title: Text(widget.title),
-        ),
-        body: ListView.builder(
-            itemCount: lines.length,
-            itemBuilder: (BuildContext context, int index) {
-              return SizedBox(
-                child: Center(child: Text('Entry ${lines[index]}')),
-              );
-            }));
-  }
-
-  Future<void> loadData() async {
-    while (true) {
-      await Future<void>.delayed(const Duration(seconds: 1));
-      setState(() {});
-    }
-  }
 }
