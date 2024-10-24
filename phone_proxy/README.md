@@ -7,7 +7,7 @@ underlying library. The phone proxy is automatically connected to by SOCKS
 forwarding processes that will attempt to route SOCKS requests through the
 phone proxy.
 
-# Building
+# Running
 
 * [Install flutter](https://docs.flutter.dev/get-started/install) on your
   machine and ensure you can run apps on a connected device.
@@ -18,4 +18,5 @@ bluetooth functionality is limited to physical devices.
 
 # Copying and using in another app
 
-TODO(benji).
+The idea behind the code in `lib/main.dart` is to be easily copyable to another
+flutter app. See inline comments for more details.
