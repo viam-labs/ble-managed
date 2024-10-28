@@ -22,6 +22,16 @@ Can only install on debian-based linux.
 Run `make setup` (will only try `apt`) and `make build` to build. Run `make
 run` to run.
 
+# Custom advertised characteristic and name
+
+The BLE characteristic that will be advertised and discoverable via a mobile
+device is the `fqdn` field of the Viam cloud config at the path
+`/etc/viam.json`. It is not otherwise customizable.
+
+The advertised BLE name (what appears as the device name in most bluetooth
+discovery menus) can be specified in the first line of a file at the path
+`/etc/advertised_ble_name.txt`. It defaults to "Viam SOCKS forwarder".
+
 ## Development Tips
 
 - `btmon` - monitors low level bluetooth interactions
