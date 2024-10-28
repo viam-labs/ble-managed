@@ -1,5 +1,7 @@
 //! Defines peripheral logic.
 
+use crate::env;
+
 use anyhow::{anyhow, Result};
 use bluer::{
     adv::Advertisement,
@@ -38,6 +40,7 @@ pub async fn advertise_and_find_proxy_device_name(
         discoverable: Some(true),
         min_interval: Some(Duration::from_millis(20)),
         max_interval: Some(Duration::from_millis(100)),
+        local_name: Some(env::get_advertised_ble_name().await?),
         ..Default::default()
     };
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);

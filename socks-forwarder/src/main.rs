@@ -1,6 +1,7 @@
 //! Runs the Viam grill proxy.
 
 mod central;
+mod env;
 mod peripheral;
 mod socks;
 
@@ -9,9 +10,6 @@ use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
 use log::{debug, info};
 use uuid::uuid;
-
-/// Name to advertise as this machine.
-const MANAGED_DEVICE_NAME: &str = "mac1.loc1.viam.cloud";
 
 /// Service UUID for advertised local proxy device name characteristic and remote PSM
 /// characteristic.
@@ -70,10 +68,11 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         adapter.set_powered(true).await?;
     }
 
-    debug!("Advertising self='{MANAGED_DEVICE_NAME}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
+    let managed_device_name = env::get_managed_device_name().await?;
+    debug!("Advertising self='{managed_device_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
     let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
         &adapter,
-        MANAGED_DEVICE_NAME.to_string(),
+        managed_device_name,
         VIAM_SERVICE_UUID,
         MANAGED_MACHINE_NAME_CHAR_UUID,
         SOCKS_PROXY_NAME_CHAR_UUID,
