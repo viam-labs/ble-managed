@@ -69,11 +69,15 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     }
 
     let managed_device_name = env::get_managed_device_name().await?;
-    adapter.set_alias(managed_device_name.clone()).await?;
-    debug!("Advertising self='{managed_device_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
+    let advertised_ble_name = env::get_advertised_ble_name().await?;
+    // This alias is what shows up in pairing requests.
+    adapter.set_alias(advertised_ble_name.clone()).await?;
+
+    debug!("Advertising self='{advertised_ble_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
     let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
         &adapter,
         managed_device_name,
+        advertised_ble_name,
         VIAM_SERVICE_UUID,
         MANAGED_MACHINE_NAME_CHAR_UUID,
         SOCKS_PROXY_NAME_CHAR_UUID,
