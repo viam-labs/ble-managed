@@ -43,19 +43,19 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
 
         // Add debug messages to these to see why auto confirmation/authorization does not work.
         request_pin_code: Some(Box::new(move |req| {
-            debug!("requesting pin code {req:$?}");
-            return_ok().boxed()
+            debug!("requesting pin code {req:#?}");
+            Ok("hello").boxed()
         })),
         display_pin_code: Some(Box::new(move |req| {
-            debug!("displaying pin code {req:$?}");
+            debug!("displaying pin code {req:#?}");
             return_ok().boxed()
         })),
         request_passkey: Some(Box::new(move |req| {
-            debug!("requesting passkey {req:$?}");
-            return_ok().boxed()
+            debug!("requesting passkey {req:#?}");
+            Ok(u32(12)).boxed()
         })),
         display_passkey: Some(Box::new(move |req| {
-            debug!("displaying passkey {req:$?}");
+            debug!("displaying passkey {req:#?}");
             return_ok().boxed()
         })),
 
