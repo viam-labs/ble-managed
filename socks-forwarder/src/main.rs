@@ -30,12 +30,12 @@ async fn return_ok() -> ReqResult<()> {
 }
 
 /// Utility function to return ok string from box.
-async fn return_ok_string() -> ReqResult<()> {
+async fn return_ok_string() -> ReqResult<String> {
     Ok("hello".to_string())
 }
 
 /// Utility function to return ok string from box.
-async fn return_ok_u32() -> ReqResult<()> {
+async fn return_ok_u32() -> ReqResult<u32> {
     Ok(u32(12))
 }
 
