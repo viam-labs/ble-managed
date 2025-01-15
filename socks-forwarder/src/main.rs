@@ -36,7 +36,7 @@ async fn return_ok_string() -> ReqResult<String> {
 
 /// Utility function to return ok string from box.
 async fn return_ok_u32() -> ReqResult<u32> {
-    Ok(u32(12))
+    Ok(12)
 }
 
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
