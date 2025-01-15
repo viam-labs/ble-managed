@@ -41,11 +41,23 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     let agent = Agent {
         request_default: true,
 
-        // Don't want to use these
-        request_pin_code: None,
-        display_pin_code: None,
-        request_passkey: None,
-        display_passkey: None,
+        // Add debug messages to these to see why auto confirmation/authorization does not work.
+        request_pin_code: Some(Box::new(move |req| {
+            debug!("requesting pin code {req:$?}");
+            return_ok().boxed()
+        })),
+        display_pin_code: Some(Box::new(move |req| {
+            debug!("displaying pin code {req:$?}");
+            return_ok().boxed()
+        })),
+        request_passkey: Some(Box::new(move |req| {
+            debug!("requesting passkey {req:$?}");
+            return_ok().boxed()
+        })),
+        display_passkey: Some(Box::new(move |req| {
+            debug!("displaying passkey {req:$?}");
+            return_ok().boxed()
+        })),
 
         // TODO(seergrills): These work for POC but production where some on screen device should
         // confirm.
