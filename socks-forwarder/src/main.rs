@@ -9,6 +9,12 @@ use anyhow::Result;
 use bluer::agent::{Agent, AgentHandle, ReqResult, RequestPasskey};
 use futures::FutureExt;
 use log::{debug, info};
+use tokio::{
+    io::{stdin, stdout, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    select,
+    sync::oneshot,
+    time::{sleep, timeout},
+};
 use uuid::uuid;
 
 /// Service UUID for advertised local proxy device name characteristic and remote PSM
@@ -32,6 +38,25 @@ async fn return_ok() -> ReqResult<()> {
 /// Utility function to return ok string from box.
 async fn return_ok_string() -> ReqResult<String> {
     Ok("hello".to_string())
+}
+
+/// Utility function to get line.
+async fn get_line() -> String {
+    let (done_tx, done_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        if done_rx.await.is_err() {
+            println!();
+            println!("Never mind! Request was cancelled. But you must press enter now.");
+        }
+    });
+
+    let mut line = String::new();
+    let mut buf = tokio::io::BufReader::new(tokio::io::stdin());
+    buf.read_line(&mut line).await.expect("cannot read stdin");
+    let _ = done_tx.send(());
+    println!("Thanks for your response!");
+
+    line.trim().to_string()
 }
 
 /// Utility function to request pass key.
