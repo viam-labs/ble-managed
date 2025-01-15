@@ -29,6 +29,16 @@ async fn return_ok() -> ReqResult<()> {
     Ok(())
 }
 
+/// Utility function to return ok string from box.
+async fn return_ok_string() -> ReqResult<()> {
+    Ok("hello".to_string())
+}
+
+/// Utility function to return ok string from box.
+async fn return_ok_u32() -> ReqResult<()> {
+    Ok(u32(12))
+}
+
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
 /// name of this device can be read, and one to which the proxy device name can be be written. Once
 /// a name is written, scans for another BLE device with that proxy device name and a corresponding
@@ -44,7 +54,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         // Add debug messages to these to see why auto confirmation/authorization does not work.
         request_pin_code: Some(Box::new(move |req| {
             debug!("requesting pin code {req:#?}");
-            Ok("hello").boxed()
+            return_ok_string().boxed()
         })),
         display_pin_code: Some(Box::new(move |req| {
             debug!("displaying pin code {req:#?}");
@@ -52,7 +62,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         })),
         request_passkey: Some(Box::new(move |req| {
             debug!("requesting passkey {req:#?}");
-            Ok(u32(12)).boxed()
+            return_ok_u32().boxed()
         })),
         display_passkey: Some(Box::new(move |req| {
             debug!("displaying passkey {req:#?}");
