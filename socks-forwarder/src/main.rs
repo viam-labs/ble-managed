@@ -6,7 +6,7 @@ mod peripheral;
 mod socks;
 
 use anyhow::Result;
-use bluer::agent::{Agent, AgentHandle, ReqResult};
+use bluer::agent::{Agent, AgentHandle, ReqResult, RequestPasskey};
 use futures::FutureExt;
 use log::{debug, info};
 use uuid::uuid;
@@ -34,9 +34,26 @@ async fn return_ok_string() -> ReqResult<String> {
     Ok("hello".to_string())
 }
 
-/// Utility function to return ok string from box.
-async fn return_ok_u32() -> ReqResult<u32> {
-    Ok(12)
+/// Utility function to request pass key.
+async fn request_pass_key(req: RequestPasskey) -> ReqResult<u32> {
+    info!(
+        "Enter 6-digit passkey for device {} on {}:",
+        &req.device, &req.adapter
+    );
+    loop {
+        let line = get_line().await;
+        let passkey: u32 = if let Ok(v) = line.parse() {
+            v
+        } else {
+            println!("Invalid passkey!");
+            continue;
+        };
+        if passkey > 999999 {
+            println!("Passkey must be 6 digits");
+            continue;
+        }
+        return Ok(passkey);
+    }
 }
 
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
@@ -60,10 +77,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
             debug!("displaying pin code {req:#?}");
             return_ok().boxed()
         })),
-        request_passkey: Some(Box::new(move |req| {
-            debug!("requesting passkey {req:#?}");
-            return_ok_u32().boxed()
-        })),
+        request_passkey: Some(Box::new(move |req| request_pass_key(req).boxed())),
         display_passkey: Some(Box::new(move |req| {
             debug!("displaying passkey {req:#?}");
             return_ok().boxed()
