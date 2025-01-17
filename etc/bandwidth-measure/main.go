@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -16,45 +18,57 @@ func main() {
 		return
 	}
 
-	// Create connection to google.com
-	conn, err := dialer.Dial("tcp", "google.com:80")
-	if err != nil {
-		fmt.Println("Error creating SOCKS-proxied connection to google.com:", err)
-		return
+	// Create HTTP client over the connection.
+	transport := &http.Transport{
+		Dial: func(network, addr string) (net.Conn, error) {
+			conn, err := dialer.Dial("tcp", addr)
+			if err != nil {
+				fmt.Println("Error creating SOCKS-proxied connection to google.com:", err.Error())
+				return nil, err
+			}
+			return conn, nil
+		},
 	}
-	defer conn.Close()
+	client := &http.Client{
+		Transport: transport,
+	}
 
 	var bandwidths []float64
-	for i := range 100 {
+	for i := 1; i <= 100; i++ {
 		fmt.Printf("Running GET request %d\n...", i)
-		// Send 100 simple HTTP GET requests.
-		request := "GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"
-		conn.Write([]byte(request))
 
-		// Measure bandwidth
 		startTime := time.Now()
-		var totalBytes int64
 
+		// GET from a random URL with no redirects.
+		resp, err := client.Get("https://cscie93.dce.harvard.edu/fall2024/index.html")
+		if err != nil {
+			fmt.Println("Error performing GET request:", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Measure the amount of data received.
+		var totalBytes int64
 		buffer := make([]byte, 1024)
 		for {
-			n, err := conn.Read(buffer)
+			_, err := resp.Body.Read(buffer)
 			if err != nil {
 				if err == io.EOF {
 					break
 				}
-				fmt.Println("Error reading from connection:", err)
+				fmt.Println("Error reading response body:", err)
 				return
 			}
-			totalBytes += int64(n)
+			totalBytes += int64(len(buffer))
 		}
 
 		duration := time.Since(startTime).Seconds()
-		bandwidth := float64(totalBytes) / duration / (1024 * 1024)
+		bandwidth := float64(totalBytes) / duration / float64(1024*1024)
+		fmt.Printf("Received %d bytes in %.2f seconds. Bandwidth: %.6f MB/s\n", totalBytes, duration, bandwidth)
 		bandwidths = append(bandwidths, bandwidth)
-		fmt.Printf("Received %d bytes in %.2f seconds. Bandwidth: %.2f MB/s\n", totalBytes, duration, bandwidth)
 	}
 
-	fmt.Printf("Average bandwidth: %.2f MB/s", average(bandwidths))
+	fmt.Printf("Average bandwidth: %.6f MB/s", average(bandwidths))
 }
 
 func average(nums []float64) float64 {
