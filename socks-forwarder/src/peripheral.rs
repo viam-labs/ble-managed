@@ -72,9 +72,9 @@ pub async fn advertise_and_find_proxy_device_name(
                     uuid: proxy_name_char_uuid,
                     write: Some(CharacteristicWrite {
                         write: true,
-                        encrypt_write: true,
-                        encrypt_authenticated_write: true,
-                        secure_write: true,
+                        encrypt_write: false,
+                        encrypt_authenticated_write: false,
+                        secure_write: false,
                         method: CharacteristicWriteMethod::Io,
                         ..Default::default()
                     }),

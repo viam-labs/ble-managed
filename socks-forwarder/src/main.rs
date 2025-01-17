@@ -6,7 +6,7 @@ mod peripheral;
 mod socks;
 
 use anyhow::Result;
-use bluer::agent::{Agent, AgentHandle, ReqResult};
+use bluer::agent::{Agent, AgentHandle, ReqResult, RequestPasskey};
 use futures::FutureExt;
 use log::{debug, info};
 use uuid::uuid;
@@ -41,7 +41,6 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     let agent = Agent {
         request_default: true,
 
-        // Don't want to use these
         request_pin_code: None,
         display_pin_code: None,
         request_passkey: None,
@@ -73,7 +72,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     // This alias is what shows up in pairing requests.
     adapter.set_alias(advertised_ble_name.clone()).await?;
 
-    debug!("Advertising self='{advertised_ble_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
+    info!("Advertising self='{advertised_ble_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
     let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
         &adapter,
         managed_device_name,
@@ -83,7 +82,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         SOCKS_PROXY_NAME_CHAR_UUID,
     )
     .await?;
-    debug!("Proxy device is '{proxy_device_name}'");
+    info!("Proxy device is '{proxy_device_name}'");
 
     let (device, psm) = central::find_device_and_psm(
         &adapter,
@@ -93,7 +92,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         PSM_CHARACTERISTIC_UUID,
     )
     .await?;
-    debug!(
+    info!(
         "Found device='{}' that is waiting for l2cap connections on psm='{psm}'; connecting",
         device.remote_address().await?
     );

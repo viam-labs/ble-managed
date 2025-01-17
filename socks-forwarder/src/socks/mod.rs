@@ -3,11 +3,14 @@
 mod chunker;
 mod mux;
 
+use std::time::Duration;
+
 use anyhow::{anyhow, Result};
 use bluer::l2cap;
 use log::{debug, error, info, warn};
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::time;
 
 /// The port on which to start the SOCKS proxy.
 const PORT: u16 = 1080;
@@ -57,6 +60,9 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
             },
         }
     }
+
+    // Wait a bit to let device potentially disconnect on its own.
+    time::sleep(Duration::from_secs(2)).await;
 
     // Disconnect device if still connected after proxy is done running.
     if device.is_connected().await? {

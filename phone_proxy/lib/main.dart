@@ -78,7 +78,7 @@ void main() {
   //
   // You may want to ask users to enter the `machineToManage` value as part
   // of app setup.
-  var machineToManage = 'mac1.loc1.viam.cloud';
+  var machineToManage = 'TODO';
 
   runZonedGuarded(
     () {
