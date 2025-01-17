@@ -3,8 +3,8 @@ Description=Forward SOCKS connections over BLE to a mobile device.
 
 [Service]
 ExecStart=/usr/bin/socks-forwarder
-Environment="SOCKS_PROXY=localhost:5000"
-Environment="RUST_LOG=info"
+Environment="SOCKS_PROXY=localhost:1080"
+Environment="RUST_LOG=debug"
 
 [Install]
 WantedBy=multi-user.target
