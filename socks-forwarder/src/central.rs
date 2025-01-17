@@ -53,7 +53,7 @@ pub async fn find_device_and_psm(
                 let remote_addr = device.remote_address().await?;
 
                 match device.rssi().await? {
-                    Some(rssi) if rssi <= -100 => {
+                    Some(rssi) if rssi <= -200 => {
                         debug!("Device {remote_addr} out of range; skipping");
                         continue;
                     }
@@ -155,18 +155,14 @@ pub async fn find_device_and_psm(
                                 continue;
                             }
 
-                            debug!("ensuring paired and trusted");
+                            info!("Ensuring paired");
 
                             if !device.is_paired().await? {
                                 debug!("pairing");
                                 device.pair().await?;
                             }
-                            if !device.is_trusted().await? {
-                                debug!("trusting");
-                                device.set_trusted(true).await?;
-                            }
 
-                            debug!("Getting PSM");
+                            info!("Getting PSM");
                             for char in service.characteristics().await? {
                                 let uuid = char.uuid().await?;
                                 debug!("Characteristic UUID: {}", &uuid);
