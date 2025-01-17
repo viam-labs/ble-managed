@@ -78,7 +78,7 @@ void main() {
   //
   // You may want to ask users to enter the `machineToManage` value as part
   // of app setup.
-  var machineToManage = 'perfecta-main.h9kzybd9wn.viam.cloud';
+  var machineToManage = 'TODO';
 
   runZonedGuarded(
     () {
