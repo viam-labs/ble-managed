@@ -40,6 +40,7 @@ echo "Installing git (likely already installed)..."
 sudo apt install git
 
 echo "Cloning the latest bluez..."
+pushd ~
 git clone https://github.com/bluez/bluez.git
 
 pushd bluez
@@ -53,5 +54,10 @@ echo "Installing bluez (this may take a while)..."
 make && sudo make install
 
 popd
-echo "Latest bluez installation successful:"
-bluetoothctl version
+popd
+echo "Unmasking, enabling, and restarting bluetooth service"
+sudo systemctl unmask bluetooth
+sudo systemctl enable bluetooth
+sudo systemctl restart bluetooth
+echo "Latest bluez installation successful. Use `bluetoothctl version` to verify version."
+echo "Remember to run hciattach commands if using external bluetooth adapters."
