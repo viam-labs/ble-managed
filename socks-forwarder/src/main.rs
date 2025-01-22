@@ -40,14 +40,10 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
 
     let agent = Agent {
         request_default: true,
-
         request_pin_code: None,
         display_pin_code: None,
         request_passkey: None,
         display_passkey: None,
-
-        // TODO(seergrills): These work for POC but production where some on screen device should
-        // confirm.
         request_confirmation: Some(Box::new(move |req| {
             debug!("auto confirming passkey {}", req.passkey);
             return_ok().boxed()
