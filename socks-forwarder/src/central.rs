@@ -41,8 +41,6 @@ pub async fn find_device_and_psm(
         return Err(anyhow!("must stop discovering outside of this process"));
     }
 
-    debug!("start discover");
-
     let discover = adapter.discover_devices_with_changes().await?;
     pin_mut!(discover);
 
@@ -62,6 +60,19 @@ pub async fn find_device_and_psm(
                         continue;
                     }
                     _ => {}
+                }
+
+                if !device.is_connected().await? {
+                    info!("Device {remote_addr} not yet connected to; connecting now");
+                    device.connect().await?;
+                }
+                if !device.is_paired().await? {
+                    info!("Device {remote_addr} not yet paired; pairing now");
+                    device.pair().await?;
+                }
+                if !device.is_trusted().await? {
+                    info!("Device {remote_addr} not yet trusted; trusting now");
+                    device.set_trusted(true).await?;
                 }
 
                 info!(
@@ -85,8 +96,12 @@ pub async fn find_device_and_psm(
                     pin_mut!(changes);
 
                     if !device.is_services_resolved().await? {
-                        device.connect().await?;
-                        debug!("waiting for GATT services to resolve");
+                        if !device.is_connected().await? {
+                            debug!("Reconnecting before waiting for GATT service resolution");
+                            device.connect().await?;
+                        }
+
+                        debug!("Waiting for GATT services to resolve");
                         let timeout = sleep(wait_interval).fuse();
                         pin_mut!(timeout);
 
@@ -95,33 +110,33 @@ pub async fn find_device_and_psm(
                                 change_opt = changes.next() => {
                                     match change_opt {
                                         Some(DeviceEvent::PropertyChanged (DeviceProperty::ServicesResolved(true)) ) => {
-                                            debug!("services resolved");
+                                            debug!("GATT services resolved");
                                             break
                                         },
                                         Some(DeviceEvent::PropertyChanged (DeviceProperty::Connected(false)) ) => {
-                                            debug!("connect again, wait for next event");
+                                            debug!("Lost connection while waiting for GATT service resolution; reconnecting");
                                             device.connect().await?;
                                         },
                                         Some(_) => { // check anyway
                                             if device.is_services_resolved().await? {
-                                                debug!("services resolved");
+                                                debug!("GATT services resolved");
                                                 break;
                                             }
                                         },
                                         None => {
-                                            debug!("changes for device stopped streaming; will stop trying until next scan");
+                                            debug!("Changes for device stopped streaming; will restart waiting for GATT service resolution");
                                             continue 'evt_loop;
                                         },
                                     }
                                 },
                                 () = &mut timeout => {
-                                    debug!("failed to connect after {wait_interval:?} will stop trying until next scan");
+                                    debug!("GATT services failed to resolve after {wait_interval:?} will restart waiting for GATT service resolution");
                                     continue 'evt_loop;
                                 },
                             }
                         }
                     }
-                    debug!("getting resolved services");
+                    debug!("Getting resolved services");
                     let services = device.services().await?;
 
                     debug!("... found {} services", services.len());
@@ -151,25 +166,18 @@ pub async fn find_device_and_psm(
                                 }
                             }
                             if !found_name {
-                                debug!("Skipping this device");
+                                debug!("Skipping this device; as name characteristic did not match {device_name}");
                                 continue;
                             }
 
-                            info!("Ensuring paired");
-
-                            if !device.is_paired().await? {
-                                debug!("pairing");
-                                device.pair().await?;
-                            }
-
-                            info!("Getting PSM");
+                            info!("Getting PSM from characteristics");
                             for char in service.characteristics().await? {
                                 let uuid = char.uuid().await?;
                                 debug!("Characteristic UUID: {}", &uuid);
                                 if uuid == psm_char_uuid {
-                                    info!("Found psm characteristic");
+                                    info!("Found PSM characteristic");
                                     if char.flags().await?.read {
-                                        debug!("Reading characteristic value");
+                                        debug!("Reading PSM characteristic value");
                                         let value = char.read().await?;
                                         debug!("Read value: {:x?}", &value);
                                         let str_psm = String::from_utf8_lossy(&value);

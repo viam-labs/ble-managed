@@ -7,9 +7,17 @@ module that can interact with the SOCKS forwarder systemd service. The SOCKS
 forwarder will automatically create connections to phone proxies (see
 ../phone_proxy) and can route all SOCKS requests through those proxies. 
 
+# Requirements for installation
+
+The SOCKS forwarder requires an installed version of bluez >= 5.60. On older OSes that
+come with a version < 5.60, it is easiest to install bluez from source. Use the
+`etc/install_bluez.sh` script at the top of this repository to do so. If you encounter any
+installation errors, please report them through the "Issues" tab.
+
 # Installing
 
-Can only install on debian-based linux.
+Can only install on debian-based linux. Installing through the `dpkg -i` command as shown
+below will also immediately start and enable the service.
 
 `make dpkg && sudo dpkg -i [deb-file]`
 
@@ -31,6 +39,11 @@ device is the `fqdn` field of the Viam cloud config at the path
 The advertised BLE name (what appears as the device name in most bluetooth
 discovery menus) can be specified in the first line of a file at the path
 `/etc/advertised_ble_name.txt`. It defaults to "Viam SOCKS forwarder".
+
+## Monitoring tips
+
+To monitor the activity of the SOCKS forwarder, use `sudo journalctl -u socks-forwarder`
+to view system logs.
 
 ## Development Tips
 
