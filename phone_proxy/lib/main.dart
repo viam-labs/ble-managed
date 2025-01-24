@@ -8,6 +8,7 @@ import 'package:blev/ble_peripheral.dart';
 import 'package:blev/ble_socket.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socks5_proxy/socks_server.dart';
@@ -80,18 +81,24 @@ void main() {
   // of app setup.
   var machineToManage = 'TODO';
 
+  mainLoop(mobileDevice, machineToManage, true);
+}
+
+void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
   runZonedGuarded(
     () {
       startBLESocksPhoneProxy(mobileDevice, machineToManage);
-      runApp(const MyApp());
+      if (shouldCallRunApp) {
+        runApp(const MyApp());
+      }
     }, (error, stackTrace) {
       if (error is L2CapDisconnectedError) {
-        logger.w('disconnection detected');
-        // L2CapDisconnectedError indicates that the BLE connection to the
-        // managed machine has been severed. Add code here to restart this
-        // zone and/or other pieces of your flutter app.
+        logger.w('disconnection detected; restarting pairing process');
+        // Restart zone but don't call runApp to avoid zone mismatch.
+        mainLoop(mobileDevice, machineToManage, false);
+      } else {
+        logger.e('unexpected error running BLE-SOCKS phone proxy: $error');
       }
-      logger.e('error running BLE-SOCKS phone proxy: $error');
     },
   );
 }
@@ -162,7 +169,7 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
 
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
-    logger.i('serve channel $thisCount as a SOCKS5 server');
+    logger.i('BLE-SOCKS proxy server established on channel $thisCount');
     final socksServerProxy = SocksServer();
     socksServerProxy.connections.listen((connection) async {
       logger.i(
