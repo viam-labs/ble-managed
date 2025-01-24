@@ -29,6 +29,11 @@ async fn return_ok() -> ReqResult<()> {
     Ok(())
 }
 
+/// Utility function to return hardcoded passkey from box.
+async fn return_hardcoded_passkey() -> ReqResult<u32> {
+    Ok(00000)
+}
+
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
 /// name of this device can be read, and one to which the proxy device name can be be written. Once
 /// a name is written, scans for another BLE device with that proxy device name and a corresponding
@@ -42,7 +47,10 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         request_default: true,
         request_pin_code: None,
         display_pin_code: None,
-        request_passkey: None,
+        request_passkey: Some(Box::new(move |_req| {
+            debug!("auto generating passkey 00000");
+            return_hardcoded_passkey().boxed()
+        })),
         display_passkey: None,
         request_confirmation: Some(Box::new(move |req| {
             debug!("auto confirming passkey {}", req.passkey);
