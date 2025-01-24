@@ -6,9 +6,9 @@ mod peripheral;
 mod socks;
 
 use anyhow::Result;
-use bluer::agent::{Agent, AgentHandle, ReqResult, RequestPasskey};
+use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
-use log::{debug, info};
+use log::{debug, error, info};
 use uuid::uuid;
 
 /// Service UUID for advertised local proxy device name characteristic and remote PSM
@@ -102,7 +102,13 @@ async fn main() -> Result<()> {
     info!("Started main method");
 
     loop {
-        let (device, psm, handle) = find_viam_proxy_device_and_psm().await?;
+        let (device, psm, handle) = match find_viam_proxy_device_and_psm().await {
+            Ok((d, psm, h)) => (d, psm, h),
+            Err(e) => {
+                error!("Error finding proxy device and associated PSM: {e}; restarting discovery");
+                continue;
+            }
+        };
 
         if !socks::start_proxy(device, psm).await? {
             drop(handle);
