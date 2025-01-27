@@ -9,7 +9,6 @@ use anyhow::{anyhow, Result};
 use bluer::l2cap;
 use log::{debug, error, info, warn};
 use tokio::net::TcpListener;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::time;
 
 /// The port on which to start the SOCKS proxy.
@@ -19,9 +18,8 @@ const PORT: u16 = 1080;
 const RECV_MTU: u16 = 65535;
 
 /// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
-/// created against the `device` on `psm`. Returns true if SOCKS proxy should be restarted
-/// (start listening for new connections again), and false if not.
-pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
+/// created against the `device` on `psm`.
+pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
     let bind_address = format!("127.0.0.1:{PORT}");
     let listener = TcpListener::bind(bind_address.clone()).await?;
 
@@ -35,10 +33,6 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
 
     info!("SOCKS forwarder now listening on {bind_address}");
 
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-
-    let mut restart = false;
     loop {
         tokio::select! {
             Ok((tcp_stream, _addr)) = listener.accept() => {
@@ -47,17 +41,8 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
                 }
             },
             _ = mux.wait_for_stop_due_to_disconnect() => {
-                restart = true;
                 break;
             }
-            _ = sigterm.recv() => {
-                info!("Stopping SOCKS forwarder (SIGTERM)...");
-                break;
-            },
-            _ = sigint.recv() => {
-                info!("Stopping SOCKS forwarder (SIGINT)...");
-                break;
-            },
         }
     }
 
@@ -71,7 +56,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
         }
         info!("Disconnected from remote device");
     }
-    Ok(restart)
+    Ok(())
 }
 
 /// Opens a new L2CAP stream to `Device` on `psm`.
