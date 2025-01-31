@@ -8,7 +8,8 @@ mod socks;
 use anyhow::Result;
 use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
+use tokio::signal::unix::{signal, SignalKind};
 use uuid::uuid;
 
 /// Service UUID for advertised local proxy device name characteristic and remote PSM
@@ -31,7 +32,7 @@ async fn return_ok() -> ReqResult<()> {
 
 /// Utility function to return hardcoded passkey from box.
 async fn return_hardcoded_passkey() -> ReqResult<u32> {
-    Ok(00000)
+    Ok(123456)
 }
 
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
@@ -48,7 +49,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         request_pin_code: None,
         display_pin_code: None,
         request_passkey: Some(Box::new(move |_req| {
-            debug!("auto generating passkey 00000");
+            debug!("auto generating passkey 123456");
             return_hardcoded_passkey().boxed()
         })),
         display_passkey: None,
@@ -107,24 +108,49 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     env_logger::init();
-    info!("Started main method");
+    info!("Started the SOCKS forwarder");
+
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
 
     loop {
-        let (device, psm, handle) = match find_viam_proxy_device_and_psm().await {
-            Ok((d, psm, h)) => (d, psm, h),
-            Err(e) => {
-                error!("Error finding proxy device and associated PSM: {e}; restarting discovery");
-                continue;
+        tokio::select! {
+            forward_socks_result = forward_socks() => {
+                match forward_socks_result {
+                    Ok(()) => {
+                        info!("Restarting the SOCKS forwarder");
+                        continue;
+                    },
+                    Err(e) => {
+                        error!("Unexpected error: {e}; stopping the SOCKS forwarder");
+                    }
+                }
+            },
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM signal; stopping the SOCKS forwarder");
+                break;
+            },
+            _ = sigint.recv() => {
+                info!("Received SIGTERM signal; stopping the SOCKS forwarder");
+                break;
             }
-        };
-
-        if !socks::start_proxy(device, psm).await? {
-            drop(handle);
-            break;
         }
-        drop(handle);
     }
 
-    info!("Finished main method");
+    info!("Stopped the SOCKS forwarder");
     Ok(())
+}
+
+async fn forward_socks() -> Result<()> {
+    let (device, psm, handle) = match find_viam_proxy_device_and_psm().await {
+        Ok((d, psm, h)) => (d, psm, h),
+        Err(e) => {
+            warn!("Error finding proxy device and associated PSM: {e}");
+            return Ok(());
+        }
+    };
+
+    let start_proxy_result = socks::start_proxy(device, psm).await;
+    drop(handle);
+    start_proxy_result
 }

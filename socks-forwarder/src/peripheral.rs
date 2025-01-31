@@ -13,7 +13,6 @@ use futures::{pin_mut, FutureExt, StreamExt};
 use log::{debug, info};
 use std::{str::from_utf8, time::Duration};
 use tokio::io::AsyncReadExt;
-use tokio::signal::unix::{signal, SignalKind};
 use uuid::Uuid;
 
 /// Advertises a peripheral device:
@@ -90,51 +89,51 @@ pub async fn advertise_and_find_proxy_device_name(
 
     info!("Advertising proxy device name char to be written to. Local device name: {device_name}");
 
-    info!("Waiting for proxy device name to be written. Press Ctrl+C to quit.");
+    info!("Waiting for proxy device name to be written");
     pin_mut!(char_control);
 
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-
     loop {
-        tokio::select! {
-            evt = char_control.next() => {
-                match evt {
-                    Some(CharacteristicControlEvent::Write(req)) => {
-                        debug!("Accepting write request event with MTU {}", req.mtu());
+        let evt = char_control.next().await;
+        match evt {
+            Some(CharacteristicControlEvent::Write(req)) => {
+                debug!("Accepting write request event with MTU {}", req.mtu());
 
-                        // This is encrypted, authenticated, and secure, so let's trust it.
-                        // This will ensure we can get the resolved private address.
-                        debug!("trusting device that wrote this char {}",req.device_address());
-                        adapter.device(req.device_address())?.set_trusted(true).await?;
-                        debug!("{} is now trusted", req.device_address());
+                // This is encrypted, authenticated, and secure, so let's trust it.
+                // This will ensure we can get the resolved private address.
+                debug!(
+                    "Trusting device that wrote this char {}",
+                    req.device_address()
+                );
+                adapter
+                    .device(req.device_address())?
+                    .set_trusted(true)
+                    .await?;
+                debug!("{} is now trusted", req.device_address());
 
-                        let mut read_buf = vec![0; req.mtu()];
-                        let mut reader = req.accept()?;
-                        let num_bytes = reader.read(&mut read_buf).await?;
-                        let trimmed_read_buf = &read_buf[0..num_bytes];
-                        match from_utf8(trimmed_read_buf) {
-                                Ok(proxy_device_name_str) => {
-                                    return Ok(proxy_device_name_str.to_string());
-                                }
-                                Err(e) => {
-                                    return Err(anyhow!("written proxy device name is not a UT8-encoded string: {e}"));
-                                }
-                            }
-                    },
-                    Some(CharacteristicControlEvent::Notify(notifier)) => {
-                        debug!("Should not happen: accepting notify request event with MTU {}", notifier.mtu());
-                    },
-                    None => break,
+                let mut read_buf = vec![0; req.mtu()];
+                let mut reader = req.accept()?;
+                let num_bytes = reader.read(&mut read_buf).await?;
+                let trimmed_read_buf = &read_buf[0..num_bytes];
+                match from_utf8(trimmed_read_buf) {
+                    Ok(proxy_device_name_str) => {
+                        return Ok(proxy_device_name_str.to_string());
+                    }
+                    Err(e) => {
+                        return Err(anyhow!(
+                            "written proxy device name is not a UT8-encoded string: {e}"
+                        ));
+                    }
                 }
-            },
-            _ = sigterm.recv() => {
-                break;
-            },
-            _ = sigint.recv() => {
-                break;
-            },
+            }
+            Some(CharacteristicControlEvent::Notify(notifier)) => {
+                debug!(
+                    "Should not happen: accepting notify request event with MTU {}",
+                    notifier.mtu()
+                );
+            }
+            None => break,
         }
     }
+
     Err(anyhow!("failed to collect a proxy device name"))
 }
