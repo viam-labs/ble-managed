@@ -7,7 +7,7 @@ use bluer::{
     AdapterEvent, Device, DeviceEvent, DeviceProperty, DiscoveryFilter, DiscoveryTransport,
 };
 use futures::{pin_mut, select, FutureExt, StreamExt};
-use log::{debug, info};
+use log::{debug, info, warn};
 use tokio::time::sleep;
 
 /// Finds previously paired device and its exposed PSM:
@@ -43,6 +43,11 @@ pub async fn find_device_and_psm(
 
     let discover = adapter.discover_devices_with_changes().await?;
     pin_mut!(discover);
+
+    // Keep track of how many times a `DeviceAdded` event was detected, but the target service was
+    // not found to be provided. If we exceed 10 times, we should disconnect and reconnect to
+    // recalculate advertised services.
+    let mut times_service_not_provided = 0;
 
     'evt_loop: while let Some(evt) = discover.next().await {
         match evt {
@@ -130,7 +135,14 @@ pub async fn find_device_and_psm(
                                     }
                                 },
                                 () = &mut timeout => {
-                                    debug!("GATT services failed to resolve after {wait_interval:?} will restart waiting for GATT service resolution");
+                                    debug!("GATT services failed to resolve after {wait_interval:?}; will disconnect and reconnect");
+
+                                    if device.is_connected().await? {
+                                        device.disconnect().await?;
+                                    }
+                                    device.connect().await?;
+
+                                    debug!("Will restart waiting for GATT service resolution");
                                     continue 'evt_loop;
                                 },
                             }
@@ -195,6 +207,15 @@ pub async fn find_device_and_psm(
                                 }
                             }
                         }
+                    }
+                } else {
+                    times_service_not_provided += 1;
+                    if times_service_not_provided > 10 {
+                        warn!("Paired device did not provide target service after 10 checks; disconnecting and reconnecting");
+                        if device.is_connected().await? {
+                            device.disconnect().await?;
+                        }
+                        device.connect().await?;
                     }
                 }
             }
