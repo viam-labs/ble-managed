@@ -1,18 +1,18 @@
 # SOCKS forwarder
 
 The SOCKS forwarder is a piece of the BLE-SOCKS bridge. It is meant to run as a
-systemd service on a linux SBC (such as a rock4C+). See the [socks-forwarder
-module](https://app.viam.com/module/viam/socks-forwarder) module for a Viam
-module that can interact with the SOCKS forwarder systemd service. The SOCKS
-forwarder will automatically create connections to phone proxies (see
-../phone_proxy) and can route all SOCKS requests through those proxies. 
+systemd service on a Debian linux SBC (such as a rock4C+). See the [socks-forwarder
+module](https://app.viam.com/module/viam/socks-forwarder) module for a Viam module that
+can interact with the SOCKS forwarder systemd service. The SOCKS forwarder will
+automatically create connections to phone proxies (see ../phone_proxy) and can route all
+SOCKS requests through those proxies.
 
 # Requirements for installation
 
-The SOCKS forwarder requires an installed version of bluez >= 5.60. On older OSes that
-come with a version < 5.60, it is easiest to install bluez from source. Use the
-`etc/install_bluez.sh` script at the top of this repository to do so. If you encounter any
-installation errors, please report them through the "Issues" tab.
+The SOCKS forwarder requires an installed version of bluez >= 5.79. On older OSes that
+come with a version < 5.79, it is easiest to install bluez from source. Use the
+`etc/install_bluez.sh` script at the top of this repository to do so on Debian images.
+If you encounter any installation errors, please report them through the "Issues" tab.
 
 # Installing
 
@@ -32,13 +32,15 @@ run` to run.
 
 # Custom advertised characteristic and name
 
-The BLE characteristic that will be advertised and discoverable via a mobile
-device is the `fqdn` field of the Viam cloud config at the path
-`/etc/viam.json`. It is not otherwise customizable.
+The BLE characteristic that will be advertised and discoverable via a mobile device is the
+`fqdn` field of the Viam cloud config at the path `/etc/viam.json`. It is not otherwise
+customizable. **It MUST be specified or the `socks-forwarder` service will fail to
+start**.
 
 The advertised BLE name (what appears as the device name in most bluetooth
 discovery menus) can be specified in the first line of a file at the path
-`/etc/advertised_ble_name.txt`. It defaults to "Viam SOCKS forwarder".
+`/etc/advertised_ble_name.txt`. It defaults to "Viam SOCKS forwarder" and does not
+need to be specified.
 
 ## Monitoring tips
 
@@ -47,7 +49,7 @@ to view system logs.
 
 ## Development Tips
 
-- `btmon` - monitors low level bluetooth interactions
+- `btmon` - monitors low level bluetooth interactions (HCI)
 - `bluetoothctl` - CLI for controlling bluetooth adapter
 	- `devices` - list known devices
 	- `info <dev>` - get info on known device MAC

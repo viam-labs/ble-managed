@@ -79,6 +79,9 @@ void main() {
   //
   // You may want to ask users to enter the `machineToManage` value as part
   // of app setup.
+  //
+  // Future modifications to the `machineToManage` value will require a
+  // reinvocation of the `mainLoop` method below.
   var machineToManage = 'TODO';
 
   mainLoop(mobileDevice, machineToManage, true);
@@ -93,6 +96,10 @@ void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
       }
     }, (error, stackTrace) {
       if (error is L2CapDisconnectedError) {
+        // You may want to execute custom code in this block. Something like notifying the
+        // app user that there's been a disconnection and to move back in range of the
+        // grill.
+
         logger.w('disconnection detected; restarting pairing process');
         // Restart zone but don't call runApp to avoid zone mismatch.
         mainLoop(mobileDevice, machineToManage, false);
