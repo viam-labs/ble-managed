@@ -81,7 +81,9 @@ void main() {
   // of app setup.
   //
   // Future modifications to the `machineToManage` value will require a
-  // reinvocation of the `mainLoop` method below.
+  // reinvocation of the `mainLoop` method below. You may want to use
+  // a `Completer` flutter object to cancel or restart the current `mainLoop`
+  // if this behavior is desired.
   var machineToManage = 'TODO';
 
   mainLoop(mobileDevice, machineToManage, true);
