@@ -24,17 +24,17 @@ struct ViamCloudConfig {
 
 #[derive(Deserialize)]
 struct Cloud {
-    // Other fields will exist in a Viam cloud config, but we only care about `fqdn`.
-    fqdn: String,
+    // Other fields will exist in a Viam cloud config, but we only care about `id`.
+    id: String,
 }
 
-/// Finds managed device name from `VIAM_CONFIG_FILE`'s `fqdn` field.
+/// Finds managed device name from `VIAM_CONFIG_FILE`'s `id` field.
 pub async fn get_managed_device_name() -> Result<String> {
     let viam_config_file = match File::open(Path::new(VIAM_CONFIG_FP)) {
         Ok(file) => file,
         _ => {
             return Err(anyhow!(
-                "could not open file from file path \"{VIAM_CONFIG_FP}\""
+                "could not open file from file path \"{VIAM_CONFIG_FP}\"; ensure Viam cloud config is available at that location"
             ));
         }
     };
@@ -42,11 +42,11 @@ pub async fn get_managed_device_name() -> Result<String> {
         Ok(vcc) => vcc,
         _ => {
             return Err(anyhow!(
-                "contents of \"{VIAM_CONFIG_FP}\" did not contain a Viam cloud config with an `fqdn` field"
+                "contents of \"{VIAM_CONFIG_FP}\" did not contain a Viam cloud config with an `id` field; ensure cloud config is well formed"
             ));
         }
     };
-    Ok(viam_cloud_config.cloud.fqdn)
+    Ok(viam_cloud_config.cloud.id)
 }
 
 /// Finds name to advertise over BLE from `ADVERSTISED_BLE_NAME_FILE` or default value.

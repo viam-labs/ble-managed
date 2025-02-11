@@ -33,7 +33,7 @@ run` to run.
 # Custom advertised characteristic and name
 
 The BLE characteristic that will be advertised and discoverable via a mobile device is the
-`fqdn` field of the Viam cloud config at the path `/etc/viam.json`. It is not otherwise
+`id` field of the Viam cloud config at the path `/etc/viam.json`. It is not otherwise
 customizable. **It MUST be specified or the `socks-forwarder` service will fail to
 start**.
 
