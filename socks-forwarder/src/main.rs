@@ -72,7 +72,11 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
         adapter.set_powered(true).await?;
     }
 
-    let managed_device_name = env::get_managed_device_name().await?;
+    // Use `unwrap` here to cause a fatal error in the event on inability to get the managed device
+    // name from `/etc/viam.json`. There is no default value for this, and the user has likely
+    // removed or edited `/etc/viam.json`.
+    let managed_device_name = env::get_managed_device_name().await.unwrap();
+
     let advertised_ble_name = env::get_advertised_ble_name().await?;
     // This alias is what shows up in pairing requests.
     adapter.set_alias(advertised_ble_name.clone()).await?;

@@ -1,3 +1,10 @@
+socks-forwarder (0.2) viam; urgency=medium
+
+  * Advertise id instead of fqdn from /etc/viam.json.
+  * Set SOCKS_PROXY environment variable for `viam-agent` systemd service upon install.
+
+ -- Benji Rewis <benji.rewis@viam.com>  Wed, 12 Feb 2025 12:26:02 -0500
+
 socks-forwarder (0.1) viam; urgency=medium
 
   * Initial release.
