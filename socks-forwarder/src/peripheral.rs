@@ -98,17 +98,23 @@ pub async fn advertise_and_find_proxy_device_name(
             Some(CharacteristicControlEvent::Write(req)) => {
                 debug!("Accepting write request event with MTU {}", req.mtu());
 
-                // This is encrypted, authenticated, and secure, so let's trust it.
-                // This will ensure we can get the resolved private address.
-                debug!(
-                    "Trusting device that wrote this char {}",
-                    req.device_address()
-                );
-                adapter
-                    .device(req.device_address())?
-                    .set_trusted(true)
-                    .await?;
-                debug!("{} is now trusted", req.device_address());
+                // Attempt to pair with the device that wrote its name to our characteristic.
+                let device = adapter.device(req.device_address())?;
+                if !device.is_paired().await? {
+                    info!(
+                        "Pairing with device {} that wrote its proxy name",
+                        req.device_address()
+                    );
+                    device.pair().await?;
+                }
+                if !device.is_trusted().await? {
+                    // Trusting should also resolve any addresses that require resolution.
+                    info!(
+                        "Trusting device {} that wrote its proxy name",
+                        req.device_address()
+                    );
+                    device.set_trusted(true).await?;
+                }
 
                 let mut read_buf = vec![0; req.mtu()];
                 let mut reader = req.accept()?;
