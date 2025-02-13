@@ -178,7 +178,7 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
 
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
-    logger.i('BLE-SOCKS proxy server established on channel $thisCount');
+    logger.i('BLE-SOCKS bridge established and ready to handle traffic');
     final socksServerProxy = SocksServer();
     socksServerProxy.connections.listen((connection) async {
       logger.i(
