@@ -9,6 +9,7 @@ use anyhow::{anyhow, Result};
 use bluer::l2cap;
 use log::{debug, error, info, warn};
 use tokio::net::TcpListener;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::time;
 
 /// The port on which to start the SOCKS proxy.
@@ -18,8 +19,10 @@ const PORT: u16 = 1080;
 const RECV_MTU: u16 = 65535;
 
 /// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
-/// created against the `device` on `psm`.
-pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
+/// created against the `device` on `psm`. Returns true if main program should go back to
+/// `find_viam_proxy_device_and_psm` and false otherwise (only returns false when a SIGTERM or
+/// SIGINT is received.)
+pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
     let bind_address = format!("127.0.0.1:{PORT}");
     let listener = TcpListener::bind(bind_address.clone()).await?;
 
@@ -33,6 +36,10 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
 
     info!("BLE-SOCKS bridge established and ready to handle traffic");
 
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+
+    let mut should_restart_main_program = true;
     loop {
         tokio::select! {
             Ok((tcp_stream, _addr)) = listener.accept() => {
@@ -43,10 +50,18 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
             _ = mux.wait_for_stop_due_to_disconnect() => {
                 break;
             }
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM signal while handling traffic; stopping the SOCKS forwarder");
+                should_restart_main_program = false;
+            },
+            _ = sigint.recv() => {
+                info!("Received SIGINT signal while handling; stopping the SOCKS forwarder");
+                should_restart_main_program = false;
+            }
         }
     }
 
-    // Wait a bit to let device potentially disconnect on its own.
+    debug!("Sleeping for a couple seconds to potentially allow manual disconnect");
     time::sleep(Duration::from_secs(2)).await;
 
     // Disconnect device if still connected after proxy is done running.
@@ -56,7 +71,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
         }
         info!("Disconnected from remote device");
     }
-    Ok(())
+    Ok(should_restart_main_program)
 }
 
 /// Opens a new L2CAP stream to `Device` on `psm`.
