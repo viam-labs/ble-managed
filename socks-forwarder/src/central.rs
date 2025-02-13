@@ -62,17 +62,12 @@ pub async fn find_device_and_psm(
                     _ => {}
                 }
 
+                // Device should be paired and trusted by this point. `DeviceAdded`, it seems,
+                // indicates there was a new pair. It's possible the connection was lost, so try to
+                // reconnect if so.
                 if !device.is_connected().await? {
-                    info!("Device {remote_addr} not yet connected to; connecting now");
+                    info!("Device {remote_addr} not connected to; reconnecting now");
                     device.connect().await?;
-                }
-                if !device.is_paired().await? {
-                    info!("Device {remote_addr} not yet paired; pairing now");
-                    device.pair().await?;
-                }
-                if !device.is_trusted().await? {
-                    info!("Device {remote_addr} not yet trusted; trusting now");
-                    device.set_trusted(true).await?;
                 }
 
                 info!(
