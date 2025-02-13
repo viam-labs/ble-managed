@@ -8,7 +8,7 @@ mod socks;
 use anyhow::Result;
 use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use tokio::signal::unix::{signal, SignalKind};
 use uuid::uuid;
 
@@ -119,23 +119,28 @@ async fn main() -> Result<()> {
 
     loop {
         tokio::select! {
-            forward_socks_result = forward_socks() => {
-                match forward_socks_result {
-                    Ok(()) => {
-                        info!("Restarting the SOCKS forwarder");
-                        continue;
+            find_result = find_viam_proxy_device_and_psm() => {
+                match find_result {
+                    Ok((device, psm, handle)) => {
+                        if socks::start_proxy(device, psm).await? {
+                            continue;
+                        }
+
+                        drop(handle);
+                        break;
                     },
                     Err(e) => {
-                        error!("Unexpected error: {e}; stopping the SOCKS forwarder");
+                        warn!("Error while scanning for mobile device: {e}; restarting the SOCKS forwarder");
+                        continue;
                     }
                 }
-            },
+            }
             _ = sigterm.recv() => {
-                info!("Received SIGTERM signal; stopping the SOCKS forwarder");
+                info!("Received SIGTERM signal while scanning for mobile device; stopping the SOCKS forwarder");
                 break;
             },
             _ = sigint.recv() => {
-                info!("Received SIGINT signal; stopping the SOCKS forwarder");
+                info!("Received SIGINT signal while scanning for mobile devicd; stopping the SOCKS forwarder");
                 break;
             }
         }
@@ -143,18 +148,4 @@ async fn main() -> Result<()> {
 
     info!("Stopped the SOCKS forwarder");
     Ok(())
-}
-
-async fn forward_socks() -> Result<()> {
-    let (device, psm, handle) = match find_viam_proxy_device_and_psm().await {
-        Ok((d, psm, h)) => (d, psm, h),
-        Err(e) => {
-            warn!("Error finding proxy device and associated PSM: {e}");
-            return Ok(());
-        }
-    };
-
-    let start_proxy_result = socks::start_proxy(device, psm).await;
-    drop(handle);
-    start_proxy_result
 }
