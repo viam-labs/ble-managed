@@ -89,7 +89,7 @@ pub async fn advertise_and_find_proxy_device_name(
 
     info!("Advertising proxy device name char to be written to. Local device name: {device_name}");
 
-    info!("Waiting for proxy device name to be written");
+    info!("In healthy and idle state. Waiting for proxy device name to be written");
     pin_mut!(char_control);
 
     loop {

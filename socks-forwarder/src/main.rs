@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
                 break;
             },
             _ = sigint.recv() => {
-                info!("Received SIGTERM signal; stopping the SOCKS forwarder");
+                info!("Received SIGINT signal; stopping the SOCKS forwarder");
                 break;
             }
         }

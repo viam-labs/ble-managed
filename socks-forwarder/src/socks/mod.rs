@@ -31,7 +31,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<()> {
     };
     let mut mux = mux::L2CAPStreamMux::create_and_start(l2cap_stream);
 
-    info!("SOCKS forwarder now listening on {bind_address}");
+    info!("BLE-SOCKS bridge established and ready to handle traffic");
 
     loop {
         tokio::select! {
