@@ -174,7 +174,7 @@ Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm, String mobileDe
 
 Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   var chanCount = 0;
-  logger.i('waiting for new L2CAP connections to proxy');
+  logger.i('in healthy and idle state; scanning for devices to proxy traffic from');
 
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
