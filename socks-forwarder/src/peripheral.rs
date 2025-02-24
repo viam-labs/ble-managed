@@ -97,24 +97,7 @@ pub async fn advertise_and_find_proxy_device_name(
         match evt {
             Some(CharacteristicControlEvent::Write(req)) => {
                 debug!("Accepting write request event with MTU {}", req.mtu());
-
-                // Attempt to pair with the device that wrote its name to our characteristic.
-                let device = adapter.device(req.device_address())?;
-                if !device.is_paired().await? {
-                    info!(
-                        "Pairing with device {} that wrote its proxy name",
-                        req.device_address()
-                    );
-                    device.pair().await?;
-                }
-                if !device.is_trusted().await? {
-                    // Trusting should also resolve any addresses that require resolution.
-                    info!(
-                        "Trusting device {} that wrote its proxy name",
-                        req.device_address()
-                    );
-                    device.set_trusted(true).await?;
-                }
+                let device_addr = req.device_address();
 
                 let mut read_buf = vec![0; req.mtu()];
                 let mut reader = req.accept()?;
@@ -122,6 +105,21 @@ pub async fn advertise_and_find_proxy_device_name(
                 let trimmed_read_buf = &read_buf[0..num_bytes];
                 match from_utf8(trimmed_read_buf) {
                     Ok(proxy_device_name_str) => {
+                        // Attempt to pair with the device that wrote its name to our characteristic.
+                        let device = adapter.device(device_addr)?;
+                        if !device.is_paired().await? {
+                            info!(
+                                "Pairing with device {} that wrote its proxy name",
+                                device_addr
+                            );
+                            device.pair().await?;
+                        }
+                        if !device.is_trusted().await? {
+                            // Trusting should also resolve any addresses that require resolution.
+                            info!("Trusting device {} that wrote its proxy name", device_addr);
+                            device.set_trusted(true).await?;
+                        }
+
                         return Ok(proxy_device_name_str.to_string());
                     }
                     Err(e) => {
