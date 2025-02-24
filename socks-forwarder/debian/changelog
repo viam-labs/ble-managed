@@ -1,3 +1,10 @@
+socks-forwarder (0.3) viam; urgency=medium
+
+  * Pair and trust device directly after characteristic write
+  * Disconnect upon stopping forwarder with a 5s timeout
+
+ --  Benji Rewis <benji.rewis@viam.com>  Mon, 24 Feb 2025 14:06:53 -0500
+
 socks-forwarder (0.2) viam; urgency=medium
 
   * Advertise id instead of fqdn from /etc/viam.json.
