@@ -18,7 +18,7 @@ dependencies:
   # `flutter-ble` on github). We recommend that you do not interface with the
   # library directly and instead use a copy of the API exposed in this example
   # app.
-  blev: ^0.0.3
+  blev: ^0.0.4
   logger: ^2.4.0
 
 dev_dependencies:
