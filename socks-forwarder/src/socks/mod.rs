@@ -53,10 +53,12 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
             _ = sigterm.recv() => {
                 info!("Received SIGTERM signal while handling traffic; stopping the SOCKS forwarder");
                 should_restart_main_program = false;
+                break;
             },
             _ = sigint.recv() => {
                 info!("Received SIGINT signal while handling; stopping the SOCKS forwarder");
                 should_restart_main_program = false;
+                break;
             }
         }
     }
