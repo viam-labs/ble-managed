@@ -1,3 +1,9 @@
+socks-forwarder (0.4) viam; urgency=medium
+
+  * Remove dpkg dependencies and build dpkg with Debian 11
+
+ -- Benji Rewis <benji.rewis@viam.com>  Wed, 05 Mar 2025 19:29:45 +0000
+
 socks-forwarder (0.3) viam; urgency=medium
 
   * Pair and trust device directly after characteristic write
