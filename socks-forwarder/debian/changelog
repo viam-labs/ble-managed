@@ -1,3 +1,9 @@
+socks-forwarder (0.4) viam; urgency=medium
+
+  * Rebuild on Debian 11
+
+ -- radxa <radxa@rock-4c-plus>  Wed, 05 Mar 2025 20:18:59 +0000
+
 socks-forwarder (0.3) viam; urgency=medium
 
   * Pair and trust device directly after characteristic write
