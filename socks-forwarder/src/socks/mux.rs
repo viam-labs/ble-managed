@@ -22,6 +22,8 @@ use tokio::{
     net::TcpStream,
     task::JoinHandle,
 };
+use rand::{thread_rng, Rng};
+
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
 const RECV_MTU: u16 = 65535;
@@ -74,6 +76,7 @@ impl L2CAPStreamMux {
         let (_l2cap_stream_read, _l2cap_stream_write) = tokio::io::split(stream);
         let (_l2cap_to_tcp_send, _l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
 
+        mux.test_stream(_l2cap_stream_write);
         // mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
         // mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
         // mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
@@ -315,6 +318,25 @@ impl L2CAPStreamMux {
                         }
                     }
                 };
+            }
+        });
+        self.tasks.push(handler);
+    }
+
+    // write 5mb of stuff into the stream
+    fn test_stream(
+        &mut self,
+        mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
+    ) {
+        let a = [(); 100].map(|_| thread_rng().gen_range(0.0..8));
+        println!("The array of random float numbers between 0.0 and 8 is: {:?}", a);
+    
+        let handler = tokio::spawn(async move {
+            loop {
+                if let Err(e) = l2cap_stream_write.write_all(&a).await {
+                    error!("Error writing to L2CAP stream; dropping packet: {e}");
+                    continue;
+                }
             }
         });
         self.tasks.push(handler);
