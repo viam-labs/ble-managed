@@ -326,9 +326,10 @@ impl L2CAPStreamMux {
         &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
-        let a = [(); 100].map(|_| 1);
+        let a = [(); 65536].map(|_| 1);
         info!("The size of the array: {:?}", a.len());
-    
+
+        let total = a.len();
         let handler = tokio::spawn(async move {
             loop {
                 info!("Sending!");
@@ -336,6 +337,8 @@ impl L2CAPStreamMux {
                     error!("Error writing to L2CAP stream; dropping packet: {e}");
                     continue;
                 }
+                total += a.len();
+                info!("Total sent {:?}", total);
             }
         });
         self.tasks.push(handler);
