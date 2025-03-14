@@ -6,7 +6,7 @@ use std::{
     sync::{
         atomic::{AtomicU16, Ordering::Relaxed},
         Arc,
-    },
+    }, time::Instant,
 };
 
 use super::chunker::Chunker;
@@ -20,7 +20,7 @@ use log::{debug, error, info, trace, warn};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     net::TcpStream,
-    task::JoinHandle,
+    task::JoinHandle, time,
 };
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
@@ -326,10 +326,11 @@ impl L2CAPStreamMux {
         &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
-        let a = [(); 10000].map(|_| 1);
+        let a = [(); 20000].map(|_| 255);
         info!("The size of the array: {:?}", a.len());
 
         let mut total = a.len();
+        let start = Instant::now();
         let handler = tokio::spawn(async move {
             loop {
                 info!("Sending!");
@@ -339,6 +340,12 @@ impl L2CAPStreamMux {
                 }
                 total += a.len();
                 info!("Total sent {:?}", total);
+                if total >= 1000000 {
+                    info!("Finished sending 1MB");
+                    let elapsed_time = now.elapsed();
+                    info!("Running slow_function() took {} seconds.", elapsed_time.as_secs());
+                    break
+                }
             }
         });
         self.tasks.push(handler);
