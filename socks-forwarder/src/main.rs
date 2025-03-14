@@ -141,7 +141,7 @@ async fn main() -> Result<()> {
                 break;
             },
             _ = sigint.recv() => {
-                info!("Received SIGINT signal while scanning for mobile devicd; stopping the SOCKS forwarder");
+                info!("Received SIGINT signal while scanning for mobile device; stopping the SOCKS forwarder");
                 break;
             }
         }
@@ -153,21 +153,74 @@ async fn main() -> Result<()> {
 
 // Logs (at debug level) all reported properties for the adapter.
 async fn log_adapter_info(adapter: &bluer::Adapter) -> Result<()> {
-    let properties = adapter.all_properties().await?;
     let mut properties_log = String::new();
 
     properties_log.push_str("Bluetooth adapter properties:\n");
     properties_log.push_str("{\n");
-    for property in properties {
-        let property_str = format!("\t{:?}\n", property);
-        // Ignore the "Uuids" property, as it contains a bunch of (likely) not useful attribute
-        // UUIDS that messy the output.
-        if property_str.starts_with("\tUuids") {
-            continue;
-        }
 
-        properties_log.push_str(&property_str);
+    properties_log.push_str(&format!("\tName: {}\n", adapter.name()));
+    if let Ok(addr) = adapter.address().await {
+        properties_log.push_str(&format!("\tAddress: {addr}\n"));
     }
+    if let Ok(addr_type) = adapter.address_type().await {
+        properties_log.push_str(&format!("\tAddress type: {addr_type}\n"));
+    }
+    if let Ok(alias) = adapter.alias().await {
+        properties_log.push_str(&format!("\tAlias: {alias}\n"));
+    }
+    if let Ok(class) = adapter.class().await {
+        properties_log.push_str(&format!("\tClass: {class}\n"));
+    }
+    if let Ok(powered) = adapter.is_powered().await {
+        properties_log.push_str(&format!("\tPowered: {powered}\n"));
+    }
+    if let Ok(discoverable) = adapter.is_discoverable().await {
+        properties_log.push_str(&format!("\tDiscoverable: {discoverable}\n"));
+    }
+    if let Ok(pairable) = adapter.is_pairable().await {
+        properties_log.push_str(&format!("\tPairable: {pairable}\n"));
+    }
+    if let Ok(pairable_to) = adapter.pairable_timeout().await {
+        properties_log.push_str(&format!("\tPairable timeout: {pairable_to}\n"));
+    }
+    if let Ok(discovering) = adapter.is_discovering().await {
+        properties_log.push_str(&format!("\tDiscovering: {discovering}\n"));
+    }
+    // UUIDs are available as a property but likely not useful to log.
+    if let Ok(modalias) = adapter.modalias().await {
+        properties_log.push_str(&format!("\tModalias: {modalias:?}\n"));
+    }
+    if let Ok(active_instances) = adapter.active_advertising_instances().await {
+        properties_log.push_str(&format!(
+            "\tActive advertising instances: {active_instances}\n"
+        ));
+    }
+    if let Ok(supported_instances) = adapter.supported_advertising_instances().await {
+        properties_log.push_str(&format!(
+            "\tSupported advertising instances: {supported_instances}\n"
+        ));
+    }
+    if let Ok(supported_includes) = adapter.supported_advertising_system_includes().await {
+        properties_log.push_str(&format!(
+            "\tSupported system includes: {supported_includes:?}\n"
+        ));
+    }
+    if let Ok(supported_secondaries) = adapter.supported_advertising_secondary_channels().await {
+        properties_log.push_str(&format!(
+            "\tSupported secondary channels: {supported_secondaries:?}\n"
+        ));
+    }
+    if let Ok(supported_capabilities) = adapter.supported_advertising_capabilities().await {
+        properties_log.push_str(&format!(
+            "\tSupported advertising capabilities: {supported_capabilities:?}\n"
+        ));
+    }
+    if let Ok(supported_features) = adapter.supported_advertising_features().await {
+        properties_log.push_str(&format!(
+            "\tSupported advertising features: {supported_features:?}\n"
+        ));
+    }
+
     properties_log.push_str("}");
 
     debug!("{}", properties_log);
