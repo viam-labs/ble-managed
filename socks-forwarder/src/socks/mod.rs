@@ -30,7 +30,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
             return Err(anyhow!("Error creating L2CAP stream: {e}"));
         }
     };
-    // let mut mux = mux::L2CAPStreamMux::create_and_start(l2cap_stream);
+    let mut mux = mux::L2CAPStreamMux::create_and_start(l2cap_stream);
 
     info!("BLE-SOCKS bridge established and ready to handle traffic");
 

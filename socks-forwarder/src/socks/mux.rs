@@ -71,8 +71,8 @@ impl L2CAPStreamMux {
         // Before splitting stream into read and write halves, log MTUs.
         mux.log_mtus(stream.as_ref());
 
-        let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
-        let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
+        let (_l2cap_stream_read, _l2cap_stream_write) = tokio::io::split(stream);
+        let (_l2cap_to_tcp_send, _l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
 
         // mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
         // mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
