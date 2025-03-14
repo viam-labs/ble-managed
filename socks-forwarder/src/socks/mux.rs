@@ -342,7 +342,7 @@ impl L2CAPStreamMux {
                 info!("Total sent {:?}", total);
                 if total >= 1000000 {
                     info!("Finished sending 1MB");
-                    let elapsed_time = now.elapsed();
+                    let elapsed_time = start.elapsed();
                     info!("Running slow_function() took {} seconds.", elapsed_time.as_secs());
                     break
                 }
