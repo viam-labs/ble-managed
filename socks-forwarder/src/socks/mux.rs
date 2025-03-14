@@ -326,7 +326,7 @@ impl L2CAPStreamMux {
         &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
-        let a = [(); 1000].map(|_| 1);
+        let a = [(); 10000].map(|_| 1);
         info!("The size of the array: {:?}", a.len());
 
         let mut total = a.len();
