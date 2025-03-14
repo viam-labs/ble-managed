@@ -327,10 +327,11 @@ impl L2CAPStreamMux {
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
         let a = [(); 100].map(|_| 1);
-        println!("The array of random float numbers between 0.0 and 8 is: {:?}", a);
+        info!("The size of the array: {:?}", a.len());
     
         let handler = tokio::spawn(async move {
             loop {
+                info!("Sending!");
                 if let Err(e) = l2cap_stream_write.write_all(&a).await {
                     error!("Error writing to L2CAP stream; dropping packet: {e}");
                     continue;
