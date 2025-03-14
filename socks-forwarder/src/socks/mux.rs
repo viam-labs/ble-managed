@@ -74,10 +74,10 @@ impl L2CAPStreamMux {
         let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
         let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
 
-        mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
-        mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
-        mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
-        mux.send_keepalive_frames_forever();
+        // mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
+        // mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
+        // mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
+        // mux.send_keepalive_frames_forever();
 
         info!("Started L2CAP stream multiplexer");
         mux
