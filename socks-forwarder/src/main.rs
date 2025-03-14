@@ -71,6 +71,7 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     if !adapter.is_powered().await? {
         adapter.set_powered(true).await?;
     }
+    log_adapter_info(&adapter).await?;
 
     // Use `unwrap` here to cause a fatal error in the event on inability to get the managed device
     // name from `/etc/viam.json`. There is no default value for this, and the user has likely
@@ -147,5 +148,28 @@ async fn main() -> Result<()> {
     }
 
     info!("Stopped the SOCKS forwarder");
+    Ok(())
+}
+
+// Logs (at debug level) all reported properties for the adapter.
+async fn log_adapter_info(adapter: &bluer::Adapter) -> Result<()> {
+    let properties = adapter.all_properties().await?;
+    let mut properties_log = String::new();
+
+    properties_log.push_str("Bluetooth adapter properties:\n");
+    properties_log.push_str("{\n");
+    for property in properties {
+        let property_str = format!("\t{:?}\n", property);
+        // Ignore the "Uuids" property, as it contains a bunch of (likely) not useful attribute
+        // UUIDS that messy the output.
+        if property_str.starts_with("\tUuids") {
+            continue;
+        }
+
+        properties_log.push_str(&property_str);
+    }
+    properties_log.push_str("}");
+
+    debug!("{}", properties_log);
     Ok(())
 }
