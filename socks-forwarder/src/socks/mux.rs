@@ -68,6 +68,9 @@ impl L2CAPStreamMux {
             stop_due_to_disconnect_receive,
         };
 
+        // Before splitting stream into read and write halves, log MTUs.
+        mux.log_mtus(stream.as_ref());
+
         let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
         let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
 
@@ -78,6 +81,28 @@ impl L2CAPStreamMux {
 
         info!("Started L2CAP stream multiplexer");
         mux
+    }
+
+    /// Logs (at debug level) the current sending and receiving MTU values.
+    fn log_mtus(&self, socket: &l2cap::Socket<l2cap::Stream>) {
+        match socket.send_mtu() {
+            Ok(smtu) => {
+                debug!("Sending MTU on the connection will be {smtu}");
+            }
+            Err(e) => {
+                debug!("Could not calculate sending MTU; likely not yet negotiated. Error was {e}");
+            }
+        };
+        match socket.recv_mtu() {
+            Ok(rmtu) => {
+                debug!("Receiving MTU on the connection will be {rmtu}");
+            }
+            Err(e) => {
+                debug!(
+                    "Could not calculate receiving MTU; likely not yet negotiated. Error was {e}"
+                );
+            }
+        };
     }
 
     /// Incorporates a new TCP stream into the multiplexer.
