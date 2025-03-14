@@ -329,7 +329,7 @@ impl L2CAPStreamMux {
         let a = [(); 65536].map(|_| 1);
         info!("The size of the array: {:?}", a.len());
 
-        let total = a.len();
+        let mut total = a.len();
         let handler = tokio::spawn(async move {
             loop {
                 info!("Sending!");
