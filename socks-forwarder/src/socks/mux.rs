@@ -22,8 +22,6 @@ use tokio::{
     net::TcpStream,
     task::JoinHandle,
 };
-use rand::{thread_rng, Rng};
-
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
 const RECV_MTU: u16 = 65535;
@@ -328,7 +326,7 @@ impl L2CAPStreamMux {
         &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
-        let a = [(); 100].map(|_| thread_rng().gen_range(0.0..8));
+        let a = [(); 100].map(|_| 1);
         println!("The array of random float numbers between 0.0 and 8 is: {:?}", a);
     
         let handler = tokio::spawn(async move {
