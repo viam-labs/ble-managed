@@ -1,17 +1,48 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:blev/ble.dart';
 import 'package:blev/ble_central.dart';
 import 'package:blev/ble_peripheral.dart';
 import 'package:blev/ble_socket.dart';
+import 'package:blev/src/mixins.dart';
 
+import 'package:async/async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socks5_proxy/socks_server.dart';
+
+// `mobileDevice` should be stored somewhere in a mobile app. It should be
+// unique to a mobile device such that `startBLESocksPhoneProxy` can:
+// - Advertise `mobileDevice` as a readable characteristic
+// - Write `mobileDevice` to a characteristic on the machine to manage
+// - Allow L2CAP connections from that managed machine
+//
+// You may want to hardcode a unique `mobileDevice` value in each instance of
+// your app.
+var mobileDevice = 'd3e535a.viam.cloud';
+
+// `machineToManage` should be the machine name (FQDN) of the machine for
+// which the mobile device is trying to proxy traffic. Assuming it is
+// running the `socks-forwarder`, the managed machine should already be:
+// - Advertising `machineToManage` as a readable characteristic
+// - Adveristing a writable characteristic (encrypted) to which the mobile
+//   device will need to write its `mobileDevice` value
+// - Ready to establish an L2CAP connection for SOCKS forwarding once a value
+//   is written to the above characteristic
+//
+// You may want to ask users to enter the `machineToManage` value as part
+// of app setup.
+//
+// Future modifications to the `machineToManage` value will require a
+// reinvocation of the `mainLoop` method below. You may want to use
+// a `Completer` flutter object to cancel or restart the current `mainLoop`
+// if this behavior is desired.
+var machineToManage = 'TODO';
 
 // The following three classes are examples of a basic flutter app setup.
 // Replace them with the implementation of your flutter app.
@@ -21,9 +52,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-        title: 'Phone Proxy', home: MyHomePage(title: 'Phone Proxy'));
+      title: 'Phone Proxy',
+      home: MyHomePage(title: 'Phone Proxy'),
+    );
   }
 }
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
 
@@ -32,25 +66,81 @@ class MyHomePage extends StatefulWidget {
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
+
 class _MyHomePageState extends State<MyHomePage> {
-  _MyHomePageState() {
-    loadData();
-  }
+  String display = 'Press a button';
+  bool _connecting = false;
+
+  _MyHomePageState();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          title: Text(widget.title),
-        ));
-  }
-
-  Future<void> loadData() async {
-    while (true) {
-      await Future<void>.delayed(const Duration(seconds: 1));
-      setState(() {});
-    }
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(widget.title),
+      ),
+      body: Center(
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Center(
+          child: Text(display),
+        ),
+        ElevatedButton(
+          onPressed: _connecting
+              ? null
+              : () {
+                  setState(() {
+                    _connecting = true;
+                  });
+                  try {
+                    startBLESocksPhoneProxy(mobileDevice, machineToManage);
+                  } on L2CapDisconnectedError {
+                    // You may want to execute custom code in this block. Something like notifying the
+                    // app user that there's been a disconnection and to move back in range of the
+                    // Bluetooth device.
+                    logger.w('disconnection detected');
+                  } catch (e) {
+                    logger.e(
+                        'unexpected error running BLE-SOCKS phone proxy: $e');
+                  } finally {
+                    // setState(() {
+                    //   _connecting = false;
+                    // });
+                  }
+                },
+          child: const Text('Connect'),
+        ),
+        ElevatedButton(
+          onPressed: _connecting
+              ? null
+              : () {
+                  setState(() {
+                    _connecting = true;
+                  });
+                  try {
+                    startBLESocksPhoneProxy(mobileDevice, 'viam-speed-test');
+                  } on L2CapDisconnectedError {
+                    // You may want to execute custom code in this block. Something like notifying the
+                    // app user that there's been a disconnection and to move back in range of the
+                    // Bluetooth device.
+                    logger.w('disconnection detected');
+                  } catch (e) {
+                    logger.e(
+                        'unexpected error running BLE-SOCKS phone proxy: $e');
+                  } finally {
+                    // setState(() {
+                    //   _connecting = false;
+                    // });
+                  }
+                },
+          child: const Text('Speed Test'),
+        ),
+        FilledButton(
+          onPressed: () {},
+          child: const Text('Disconnect'),
+        ),
+      ])),
+    );
   }
 }
 
@@ -58,58 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
 // Specifically, you will have to provide the values for `mobileDevice` and
 // `machineToManage`.
 void main() {
-  // `mobileDevice` should be stored somewhere in a mobile app. It should be
-  // unique to a mobile device such that `startBLESocksPhoneProxy` can:
-  // - Advertise `mobileDevice` as a readable characteristic
-  // - Write `mobileDevice` to a characteristic on the machine to manage
-  // - Allow L2CAP connections from that managed machine
-  //
-  // You may want to hardcode a unique `mobileDevice` value in each instance of
-  // your app.
-  var mobileDevice = 'd3e535a.viam.cloud';
-
-  // `machineToManage` should be the machine name (FQDN) of the machine for
-  // which the mobile device is trying to proxy traffic. Assuming it is
-  // running the `socks-forwarder`, the managed machine should already be:
-  // - Advertising `machineToManage` as a readable characteristic
-  // - Adveristing a writable characteristic (encrypted) to which the mobile
-  //   device will need to write its `mobileDevice` value
-  // - Ready to establish an L2CAP connection for SOCKS forwarding once a value
-  //   is written to the above characteristic
-  //
-  // You may want to ask users to enter the `machineToManage` value as part
-  // of app setup.
-  //
-  // Future modifications to the `machineToManage` value will require a
-  // reinvocation of the `mainLoop` method below. You may want to use
-  // a `Completer` flutter object to cancel or restart the current `mainLoop`
-  // if this behavior is desired.
-  var machineToManage = 'TODO';
-
-  mainLoop(mobileDevice, machineToManage, true);
-}
-
-void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
-  runZonedGuarded(
-    () {
-      startBLESocksPhoneProxy(mobileDevice, machineToManage);
-      if (shouldCallRunApp) {
-        runApp(const MyApp());
-      }
-    }, (error, stackTrace) {
-      if (error is L2CapDisconnectedError) {
-        // You may want to execute custom code in this block. Something like notifying the
-        // app user that there's been a disconnection and to move back in range of the
-        // grill.
-
-        logger.w('disconnection detected; restarting pairing process');
-        // Restart zone but don't call runApp to avoid zone mismatch.
-        mainLoop(mobileDevice, machineToManage, false);
-      } else {
-        logger.e('unexpected error running BLE-SOCKS phone proxy: $error');
-      }
-    },
-  );
+  runApp(const MyApp());
 }
 
 /* No need to mutate code beneath this line. */
@@ -157,14 +196,17 @@ void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
   });
 }
 
-Future<void> initializeProxy(BlePeripheral blePeriph, String mobileDevice, machineToManage) async {
+Future<void> initializeProxy(
+    BlePeripheral blePeriph, String mobileDevice, machineToManage) async {
   final (proxyPSM, proxyChanStream) = await blePeriph.publishL2capChannel();
   await advertiseProxyPSM(blePeriph, proxyPSM, mobileDevice);
   await listenAndProxySOCKS(proxyChanStream);
 }
 
-Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm, String mobileDevice) async {
-  logger.i('advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
+Future<void> advertiseProxyPSM(
+    BlePeripheral blePeriph, int psm, String mobileDevice) async {
+  logger.i(
+      'advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
   await blePeriph.addReadOnlyService(viamSvcUUID, {
     viamSocksProxyNameCharUUID: mobileDevice,
     viamSocksProxyPSMCharUUID: '$psm',
@@ -173,25 +215,33 @@ Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm, String mobileDe
 }
 
 Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
-  var chanCount = 0;
-  logger.i('in healthy and idle state; scanning for devices to proxy traffic from');
+  logger.i(
+      'in healthy and idle state; scanning for devices to proxy traffic from');
 
   chanStream.listen((chan) async {
-    final thisCount = chanCount++;
     logger.i('BLE-SOCKS bridge established and ready to handle traffic');
-    final socksServerProxy = SocksServer();
-    socksServerProxy.connections.listen((connection) async {
-      logger.i(
-          'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
-      await connection.forward(allowIPv6: true);
-    }).onError((error) { logger.e('error listening for connections: $error'); });
+    SpeedTestSocket(chan);
+    logger.i('SOMETHING ACCEPTED');
 
-    unawaited(socksServerProxy
-        .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
+    // measure traffic and then drop
+
+    // send traffic back over
+
+    // final socksServerProxy = SocksServer();
+    // socksServerProxy.connections.listen((connection) async {
+    //   logger.i(
+    //       'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
+    //   await connection.forward(allowIPv6: true);
+    // }).onError((error) {
+    //   logger.e('error listening for connections: $error');
+    // });
+    // unawaited(socksServerProxy
+    //     .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
   }).asFuture();
 }
 
-Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineToManage) async {
+Future<void> manageMachine(
+    BleCentral bleCentral, String mobileDevice, machineToManage) async {
   logger.i('scanning for $machineToManage now');
   late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
@@ -273,12 +323,115 @@ Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineTo
           return;
         }
 
-        logger.i('machine to manage knows our name and we will wait for a connection');
+        logger.i(
+            'machine to manage knows our name and we will wait for a connection');
       }).catchError((error) {
-        logger.e('error establishing connection with machine to manage: $error; will try again');
+        logger.e(
+            'error establishing connection with machine to manage: $error; will try again');
         unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
       });
     },
     onError: (Object e) => logger.e('manageMachine failed: $e'),
   );
+}
+
+class SpeedTestSocket
+    with StreamFromControllerMixin<Uint8List>, IOSinkFromControllerMixin
+    implements Socket {
+  final L2CapChannel _channel;
+  final CancelableCompleter<void> _completer = CancelableCompleter<void>();
+
+  SpeedTestSocket(this._channel) {
+    _read();
+    // _write();
+  }
+
+  Future<void> _read() async {
+    var read = 0;
+    Stopwatch stopwatch = Stopwatch()..start();
+    try {
+      while (!_completer.isCompleted) {
+        final data = await _channel.read(256);
+        if (data == null) {
+          return;
+        }
+        streamController.sink.add(data);
+        read += data.length;
+        logger.i('package num ${data[0]}');
+        logger.i('received $read bytes');
+        // if (read >= 1000000) {
+        //   logger.i("Finished receiving 1MB");
+        //   logger.i('Took ${stopwatch.elapsed}');
+        //   break;
+        // }
+      }
+    } catch (err) {
+      debugPrint('error reading from l2cap channel: $err');
+    } finally {
+      await streamController.sink.close();
+    }
+  }
+
+  Future<void> _write() async {
+    try {
+      await for (final data in ioSinkController.stream) {
+        if (_completer.isCompleted) {
+          return;
+        }
+        await _channel.write(Uint8List.fromList(data));
+      }
+    } catch (err) {
+      debugPrint('error writing to l2cap channel: $err');
+    }
+  }
+
+  @override
+  InternetAddress get address => InternetAddress.anyIPv4;
+
+  @override
+  void destroy() {
+    _completer.complete();
+    streamController.close();
+  }
+
+  @override
+  Uint8List getRawOption(RawSocketOption option) {
+    throw UnimplementedError();
+  }
+
+  /// The port used by this socket.
+  ///
+  /// It's always 1234 and should not matter.
+  @override
+  int get port => 1234;
+
+  @override
+  InternetAddress get remoteAddress => InternetAddress.anyIPv4;
+
+  @override
+  int get remotePort => 4321;
+
+  @override
+  // we don't support any options which may cause semantic issues in the future?
+  bool setOption(SocketOption option, bool enabled) {
+    if (option == SocketOption.tcpNoDelay) {
+      debugPrint('SpeedTestSocket ignoring setOption for tcpNoDelay=$enabled');
+    } else {
+      debugPrint('SpeedTestSocket ignoring setOption');
+    }
+    return false;
+  }
+
+  @override
+  // we don't support any options which may cause semantic issues in the future?
+  void setRawOption(RawSocketOption option) {
+    debugPrint('SpeedTestSocket ignoring setRawOption $option');
+  }
+
+  @override
+  Future<void> close() async {
+    destroy();
+    await super.close();
+    await _channel.close();
+  }
 }
