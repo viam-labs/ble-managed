@@ -3,6 +3,9 @@ default: build
 run:
 	RUST_LOG=debug cargo run
 
+speed-test:
+	RUST_LOG=debug cargo run -- --speed-test
+
 setup:
 	# D-Bus development headers are required for building with the bluer crate.
 	sudo apt install libdbus-1-dev

@@ -5,6 +5,7 @@ mod env;
 mod peripheral;
 mod socks;
 
+use std::env as stdenv;
 use anyhow::Result;
 use bluer::agent::{Agent, AgentHandle, ReqResult};
 use futures::FutureExt;
@@ -40,7 +41,7 @@ async fn return_hardcoded_passkey() -> ReqResult<u32> {
 /// a name is written, scans for another BLE device with that proxy device name and a corresponding
 /// Viam service UUID and PSM characteristic. It then returns the device, the discoverd PSM, and
 /// the agent handle.
-async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHandle)> {
+async fn find_viam_proxy_device_and_psm(speed_test_mode: bool) -> Result<(bluer::Device, u16, AgentHandle)> {
     debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
@@ -73,10 +74,16 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     }
     log_adapter_info(&adapter).await?;
 
-    // Use `unwrap` here to cause a fatal error in the event on inability to get the managed device
-    // name from `/etc/viam.json`. There is no default value for this, and the user has likely
-    // removed or edited `/etc/viam.json`.
-    let managed_device_name = env::get_managed_device_name().await.unwrap();
+    // if in speed test mode, use a default name. this will likely need to change if multiple speed tests are being run
+    // in the same area at the same time.
+    let mut managed_device_name = String::from("viam-speed-test");
+    if !speed_test_mode {
+        // Use `unwrap` here to cause a fatal error in the event on inability to get the managed device
+        // name from `/etc/viam.json`. There is no default value for this, and the user has likely
+        // removed or edited `/etc/viam.json`.
+        managed_device_name = env::get_managed_device_name().await.unwrap();
+    }
+
 
     let advertised_ble_name = env::get_advertised_ble_name().await?;
     // This alias is what shows up in pairing requests.
@@ -113,17 +120,36 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     env_logger::init();
-    info!("Started the SOCKS forwarder");
+
+    let mut args = stdenv::args().skip(1);
+    let mut speed_test_mode = false;
+    while let Some(arg) = args.next() {
+        match &arg[..] {
+            "-s" | "--speed-test" => speed_test_mode = true,
+            _ => {
+                if arg.starts_with('-') {
+                    println!("Unknown argument {}, use -s or --speed-test to run program in speed test mode", arg);
+                } else {
+                    println!("Unknown positional argument {}, use -s or --speed-test to run program in speed test mode", arg);
+                }
+            }
+        }
+    }
+    if speed_test_mode {
+        info!("Started the SOCKS forwarder in speed test mode");
+    } else{
+        info!("Started the SOCKS forwarder");
+    }
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
     loop {
         tokio::select! {
-            find_result = find_viam_proxy_device_and_psm() => {
+            find_result = find_viam_proxy_device_and_psm(speed_test_mode) => {
                 match find_result {
                     Ok((device, psm, handle)) => {
-                        if socks::start_proxy(device, psm).await? {
+                        if socks::start_proxy(device, psm, speed_test_mode).await? {
                             continue;
                         }
 

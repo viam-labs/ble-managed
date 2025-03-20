@@ -2,11 +2,10 @@
 //! https://github.com/viamrobotics/flutter-ble/blob/bbe7e2a511c452f932c52e3784d7dca3751a03bd/doc/sockets.md
 
 use std::{
-    io::Write,
-    sync::{
+    io::Write, sync::{
         atomic::{AtomicU16, Ordering::Relaxed},
         Arc,
-    },
+    }, time::Instant
 };
 
 use super::chunker::Chunker;
@@ -47,7 +46,7 @@ pub(crate) struct L2CAPStreamMux {
 
 impl L2CAPStreamMux {
     /// Creates new mux from an L2CAP stream.
-    pub(crate) fn create_and_start(stream: l2cap::Stream) -> Self {
+    pub(crate) fn create_and_start(stream: l2cap::Stream, speed_test_mode: bool) -> Self {
         info!("Starting L2CAP stream multiplexer...");
         let next_port = AtomicU16::new(1); // Start at 1 to distinguish between control packets.
         let port_to_tcp_stream = Arc::new(DashMap::default());
@@ -74,10 +73,18 @@ impl L2CAPStreamMux {
         let (l2cap_stream_read, l2cap_stream_write) = tokio::io::split(stream);
         let (l2cap_to_tcp_send, l2cap_to_tcp_receive) = async_channel::unbounded::<Vec<u8>>();
 
-        mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
-        mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
-        mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
-        mux.send_keepalive_frames_forever();
+        // default behavior is to not be in speed_test_mode, so evaluate that first
+        if !speed_test_mode {
+            mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
+            mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
+            mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
+            mux.send_keepalive_frames_forever(); 
+        } else {
+            mux.test_stream(l2cap_stream_write);
+            mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
+            mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
+        }
+
 
         info!("Started L2CAP stream multiplexer");
         mux
@@ -320,6 +327,79 @@ impl L2CAPStreamMux {
         self.tasks.push(handler);
     }
 
+    // write 1mb of stuff into the stream
+    fn test_stream(
+        &mut self,
+        mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
+    ) {
+        let bytes_per_test = 200000 as f64;
+        let stop_due_to_disconnect_send = self.stop_due_to_disconnect_send.clone();
+        let handler = tokio::spawn(async move {
+            info!("Starting upload speed test!");
+            let mut loop_num = 1;
+            let num_tests = 5;
+
+            let mut total_sent: f64 = 0.0;
+            let mut total_elapsed: f64 = 0.0;
+            loop {
+                let mut total = 0;
+                let mut msg_num = 0;
+                let start = Instant::now();
+                loop {
+                    // for whatever reason, 29000 bytes seems to be the largest number that works reliably on test device (Pixel 7 on Android 15).
+                    // using 25000 because that seems to average the highest speed.
+                    // feel free to increase or decrease this. 
+                    const BYTES_PER_WRITE: usize = 25000;
+                    let a = [(); BYTES_PER_WRITE].map(|_| msg_num);
+                    if let Err(e) = l2cap_stream_write.write_all(&a).await {
+                        error!("Error writing to L2CAP stream; ending network test: {e}");
+                        // disconnect
+                        if let Err(e) = stop_due_to_disconnect_send.send(false).await {
+                            error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
+                        }
+                    }
+                    total += a.len();
+    
+                    if total >= bytes_per_test as usize {
+                        let mb_sent = total as f64/1000000.;
+                        let elapsed_time = start.elapsed().as_millis() as f64/1000.;
+
+                        let mut test_log = String::new();
+                        test_log.push_str("\n");
+                        test_log.push_str(&format!("Test #{} of {}\n", loop_num, num_tests));
+                        test_log.push_str(&format!("\tData sent: {:.3} megabytes\n", mb_sent));
+                        test_log.push_str(&format!("\tTime elapsed: {:.3}s\n", elapsed_time));
+                        test_log.push_str(&format!("\tUpload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", mb_sent/elapsed_time, 8.*mb_sent/elapsed_time));
+                        info!("{}", test_log);
+
+                        total_sent += mb_sent;
+                        total_elapsed += elapsed_time;
+                        // await to make sure the other side has fully received data
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        break
+                    }
+                    msg_num += 1;
+                }
+                loop_num += 1;
+                if loop_num > num_tests {
+                    let mut test_log = String::new();
+                    test_log.push_str("\n");
+                    test_log.push_str("Upload Speed Test Summary:\n");
+                    test_log.push_str(&format!("\tTotal sent: {:.3} megabytes\n", total_sent));
+                    test_log.push_str(&format!("\tTotal elapsed: {:.3}s\n", total_elapsed));
+                    test_log.push_str(&format!("\tAvg Upload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", total_sent/total_elapsed, 8.*total_sent/total_elapsed));
+                    info!("{}", test_log);
+                    break
+                }
+            }
+            // disconnect
+            if let Err(e) = stop_due_to_disconnect_send.send(false).await {
+                error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
+            }
+        });
+        self.tasks.push(handler);
+    }
+
     /// Reads from `tcp_to_l2cap_receive` into `l2cap_stream_write`.
     fn pipe_in_tcp(
         &mut self,
@@ -379,14 +459,16 @@ impl L2CAPStreamMux {
 
     /// Waits for a signal due to L2CAP disconnection and `stop`s the mux if it receives
     /// one.
-    pub(crate) async fn wait_for_stop_due_to_disconnect(&mut self) {
+    pub(crate) async fn wait_for_stop_due_to_disconnect(&mut self)-> bool {
         match self.stop_due_to_disconnect_receive.recv().await {
-            Ok(_) => {
+            Ok(should_restart_main_program) => {
                 warn!("L2CAP disconnection detected");
                 self.stop();
+                return should_restart_main_program;
             }
             Err(e) => {
                 error!("Error receiving from 'stop_due_to_disconnect_receive' channel: {e}");
+                return false;
             }
         }
     }

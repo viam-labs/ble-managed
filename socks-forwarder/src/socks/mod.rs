@@ -20,7 +20,7 @@ const RECV_MTU: u16 = 65535;
 /// created against the `device` on `psm`. Returns true if main program should go back to
 /// `find_viam_proxy_device_and_psm` and false otherwise (only returns false when a SIGTERM or
 /// SIGINT is received.)
-pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
+pub async fn start_proxy(device: bluer::Device, psm: u16, speed_test_mode:bool) -> Result<bool> {
     let bind_address = format!("127.0.0.1:{PORT}");
     let listener = TcpListener::bind(bind_address.clone()).await?;
 
@@ -30,14 +30,14 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
             return Err(anyhow!("Error creating L2CAP stream: {e}"));
         }
     };
-    let mut mux = mux::L2CAPStreamMux::create_and_start(l2cap_stream);
+    let mut mux = mux::L2CAPStreamMux::create_and_start(l2cap_stream, speed_test_mode);
 
     info!("BLE-SOCKS bridge established and ready to handle traffic");
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    let mut should_restart_main_program = true;
+    let should_restart_main_program;
     loop {
         tokio::select! {
             Ok((tcp_stream, _addr)) = listener.accept() => {
@@ -45,7 +45,10 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
                     return Err(anyhow!("could not add mux TCP stream: {e}"));
                 }
             },
-            _ = mux.wait_for_stop_due_to_disconnect() => {
+            should_restart = mux.wait_for_stop_due_to_disconnect() => {
+                // disconnects will happen more often and is expected most of the time
+                debug!("Received disconnect signal while handling traffic; stopping the SOCKS forwarder");
+                should_restart_main_program = should_restart;
                 break;
             }
             _ = sigterm.recv() => {
@@ -54,7 +57,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
                 break;
             },
             _ = sigint.recv() => {
-                info!("Received SIGINT signal while handling; stopping the SOCKS forwarder");
+                info!("Received SIGINT signal while handling traffic; stopping the SOCKS forwarder");
                 should_restart_main_program = false;
                 break;
             }
