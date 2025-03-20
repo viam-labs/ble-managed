@@ -37,7 +37,8 @@ pub async fn start_proxy(device: bluer::Device, psm: u16, speed_test_mode:bool) 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    let should_restart_main_program;
+    // should not restart the program in speed test mode
+    let mut should_restart_main_program = !speed_test_mode;
     loop {
         tokio::select! {
             Ok((tcp_stream, _addr)) = listener.accept() => {
@@ -45,10 +46,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16, speed_test_mode:bool) 
                     return Err(anyhow!("could not add mux TCP stream: {e}"));
                 }
             },
-            should_restart = mux.wait_for_stop_due_to_disconnect() => {
-                // disconnects will happen more often and is expected most of the time
-                debug!("Received disconnect signal while handling traffic; stopping the SOCKS forwarder");
-                should_restart_main_program = should_restart;
+            _ = mux.wait_for_stop_due_to_disconnect() => {
                 break;
             }
             _ = sigterm.recv() => {

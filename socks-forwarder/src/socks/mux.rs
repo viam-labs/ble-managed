@@ -354,9 +354,10 @@ impl L2CAPStreamMux {
                     if let Err(e) = l2cap_stream_write.write_all(&a).await {
                         error!("Error writing to L2CAP stream; ending network test: {e}");
                         // disconnect
-                        if let Err(e) = stop_due_to_disconnect_send.send(false).await {
+                        if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                             error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
                         }
+                        return
                     }
                     total += a.len();
     
@@ -393,7 +394,7 @@ impl L2CAPStreamMux {
                 }
             }
             // disconnect
-            if let Err(e) = stop_due_to_disconnect_send.send(false).await {
+            if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                 error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
             }
         });
@@ -459,16 +460,14 @@ impl L2CAPStreamMux {
 
     /// Waits for a signal due to L2CAP disconnection and `stop`s the mux if it receives
     /// one.
-    pub(crate) async fn wait_for_stop_due_to_disconnect(&mut self)-> bool {
+    pub(crate) async fn wait_for_stop_due_to_disconnect(&mut self) {
         match self.stop_due_to_disconnect_receive.recv().await {
-            Ok(should_restart_main_program) => {
+            Ok(_) => {
                 warn!("L2CAP disconnection detected");
                 self.stop();
-                return should_restart_main_program;
             }
             Err(e) => {
                 error!("Error receiving from 'stop_due_to_disconnect_receive' channel: {e}");
-                return false;
             }
         }
     }
