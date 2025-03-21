@@ -80,7 +80,7 @@ impl L2CAPStreamMux {
             mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
             mux.send_keepalive_frames_forever(); 
         } else {
-            mux.test_stream(l2cap_stream_write);
+            mux.upload_test(l2cap_stream_write);
             mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
             mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
         }
@@ -327,8 +327,8 @@ impl L2CAPStreamMux {
         self.tasks.push(handler);
     }
 
-    // write 1mb of stuff into the stream
-    fn test_stream(
+    // The structure here should match the corresponding _uploadTest in the phone proxy app
+    fn upload_test(
         &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
@@ -336,7 +336,7 @@ impl L2CAPStreamMux {
         let stop_due_to_disconnect_send = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
             info!("Starting upload speed test!");
-            let mut loop_num = 1;
+            let mut test_num = 1;
             let num_tests = 5;
 
             let mut total_sent: f64 = 0.0;
@@ -367,7 +367,7 @@ impl L2CAPStreamMux {
 
                         let mut test_log = String::new();
                         test_log.push_str("\n");
-                        test_log.push_str(&format!("Test #{} of {}\n", loop_num, num_tests));
+                        test_log.push_str(&format!("Test #{} of {}\n", test_num, num_tests));
                         test_log.push_str(&format!("\tData sent: {:.3} megabytes\n", mb_sent));
                         test_log.push_str(&format!("\tTime elapsed: {:.3}s\n", elapsed_time));
                         test_log.push_str(&format!("\tUpload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", mb_sent/elapsed_time, 8.*mb_sent/elapsed_time));
@@ -376,13 +376,13 @@ impl L2CAPStreamMux {
                         total_sent += mb_sent;
                         total_elapsed += elapsed_time;
                         // await to make sure the other side has fully received data
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                         break
                     }
                     msg_num += 1;
                 }
-                loop_num += 1;
-                if loop_num > num_tests {
+                test_num += 1;
+                if test_num > num_tests {
                     let mut test_log = String::new();
                     test_log.push_str("\n");
                     test_log.push_str("Upload Speed Test Summary:\n");
