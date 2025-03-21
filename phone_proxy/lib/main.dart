@@ -1,15 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:blev/ble.dart';
 import 'package:blev/ble_central.dart';
 import 'package:blev/ble_peripheral.dart';
 import 'package:blev/ble_socket.dart';
-import 'package:blev/src/mixins.dart';
 
-import 'package:async/async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
@@ -58,6 +54,19 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// Logs output to the screen of the app
+class ScreenOutput extends ConsoleOutput {
+  void Function(OutputEvent) callback;
+
+  ScreenOutput(this.callback);
+
+  @override
+  void output(OutputEvent event) {
+    super.output(event);
+    callback(event);
+  }
+}
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
 
@@ -68,10 +77,18 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  String display = 'Press a button';
+  List<String> display = [];
   bool _connecting = false;
+  BleCentral? _bleCentral;
+  BlePeripheral? _blePeriph;
 
-  _MyHomePageState();
+  late Logger _logger;
+
+  _MyHomePageState() {
+    _logger = Logger(
+        printer: SimplePrinter(colors: false),
+        output: ScreenOutput(logCallback));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,358 +97,351 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: Center(
+      body: Padding(
+          padding: const EdgeInsets.all(16.0),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Center(
-          child: Text(display),
-        ),
-        ElevatedButton(
-          onPressed: _connecting
-              ? null
-              : () {
-                  setState(() {
-                    _connecting = true;
-                  });
-                  try {
-                    startBLESocksPhoneProxy(mobileDevice, machineToManage);
-                  } on L2CapDisconnectedError {
-                    // You may want to execute custom code in this block. Something like notifying the
-                    // app user that there's been a disconnection and to move back in range of the
-                    // Bluetooth device.
-                    logger.w('disconnection detected');
-                  } catch (e) {
-                    logger.e(
-                        'unexpected error running BLE-SOCKS phone proxy: $e');
-                  } finally {
-                    // setState(() {
-                    //   _connecting = false;
-                    // });
-                  }
-                },
-          child: const Text('Connect'),
-        ),
-        ElevatedButton(
-          onPressed: _connecting
-              ? null
-              : () {
-                  setState(() {
-                    _connecting = true;
-                  });
-                  try {
-                    startBLESocksPhoneProxy(mobileDevice, 'viam-speed-test');
-                  } on L2CapDisconnectedError {
-                    // You may want to execute custom code in this block. Something like notifying the
-                    // app user that there's been a disconnection and to move back in range of the
-                    // Bluetooth device.
-                    logger.w('disconnection detected');
-                  } catch (e) {
-                    logger.e(
-                        'unexpected error running BLE-SOCKS phone proxy: $e');
-                  } finally {
-                    // setState(() {
-                    //   _connecting = false;
-                    // });
-                  }
-                },
-          child: const Text('Speed Test'),
-        ),
-        FilledButton(
-          onPressed: () {},
-          child: const Text('Disconnect'),
-        ),
-      ])),
+            const Center(
+              child: Text("Press a button"),
+            ),
+            ElevatedButton(
+              onPressed: disableConnect() ? null : onConnectPress(false),
+              child: const Text('Connect'),
+            ),
+            ElevatedButton(
+              onPressed: disableConnect() ? null : onConnectPress(true),
+              child: const Text('Speed Test'),
+            ),
+            FilledButton(
+              onPressed: () {
+                _bleCentral?.reset();
+                _blePeriph?.reset();
+                setState(() {
+                  _bleCentral = null;
+                  _blePeriph = null;
+                  display = [];
+                });
+              },
+              child: const Text('Disconnect'),
+            ),
+            const Text("Output:"),
+            Center(
+              child: Text(display.join('\n')),
+            ),
+          ])),
+    );
+  }
+
+  void logCallback(OutputEvent event) {
+    if (display.length + event.lines.length > 20) {
+      display = display.sublist(event.lines.length);
+    }
+    display.addAll(event.lines);
+    setState(() {
+      display = display;
+    });
+  }
+
+  bool disableConnect() {
+    return _connecting || _bleCentral != null || _blePeriph != null;
+  }
+
+  void startBLESocksPhoneProxy(
+      String mobileDevice, machineToManage, bool speedTestMode) {
+    WidgetsFlutterBinding.ensureInitialized();
+    Permission.bluetoothConnect
+        .request()
+        .then((status) => Permission.bluetoothScan.request())
+        .then((status) => Permission.bluetoothAdvertise.request())
+        .then((status) {
+      BlePeripheral.create().then((blePeriph) {
+        setState(() {
+          _blePeriph = blePeriph;
+        });
+        final stateStream = blePeriph.getState();
+        late StreamSubscription<AdapterState> streamSub;
+        streamSub = stateStream.listen((state) {
+          if (state == AdapterState.poweredOn) {
+            streamSub.cancel();
+            initializeProxy(
+                blePeriph, mobileDevice, machineToManage, speedTestMode);
+          }
+        });
+      });
+      BleCentral.create().then((bleCentral) {
+        setState(() {
+          _bleCentral = bleCentral;
+        });
+        final stateStream = bleCentral.getState();
+        late StreamSubscription<AdapterState> streamSub;
+        streamSub = stateStream.listen((state) {
+          if (state == AdapterState.poweredOn) {
+            streamSub.cancel();
+            manageMachine(bleCentral, mobileDevice, machineToManage);
+          }
+        });
+      });
+    }).catchError((error) {
+      _logger.e('error requesting bluetooth permissions: $error');
+    });
+  }
+
+  VoidCallback onConnectPress(bool speedTestMode) {
+    var machineName = speedTestMode ? 'viam-speed-test' : machineToManage;
+    return () {
+      setState(() {
+        _connecting = true;
+        display = [];
+      });
+      try {
+        startBLESocksPhoneProxy(mobileDevice, machineName, speedTestMode);
+      } on L2CapDisconnectedError {
+        // You may want to execute custom code in this block. Something like notifying the
+        // app user that there's been a disconnection and to move back in range of the
+        // Bluetooth device.
+        _logger.w('disconnection detected');
+      } catch (e) {
+        _logger.e('unexpected error running BLE-SOCKS phone proxy: $e');
+      } finally {
+        setState(() {
+          _connecting = false;
+        });
+      }
+    };
+  }
+
+  /* No need to mutate code beneath this line. */
+
+  // Hardcoded Viam BLE UUIDs known by both this code and SOCKS forwarder code.
+  final viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
+  final viamSocksProxyPSMCharUUID = 'ab76ead2-b6e6-4f12-a053-61cd0eed19f9';
+  final viamManagedMachineNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d7';
+  final viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
+
+  // Give some BLE operations a few retries for resiliency.
+  final numRetries = 3;
+
+  Future<void> initializeProxy(BlePeripheral blePeriph, String mobileDevice,
+      machineToManage, bool speedTestMode) async {
+    final (proxyPSM, proxyChanStream) = await blePeriph.publishL2capChannel();
+    await advertiseProxyPSM(blePeriph, proxyPSM, mobileDevice);
+    await listenAndProxySOCKS(proxyChanStream, speedTestMode);
+  }
+
+  Future<void> advertiseProxyPSM(
+      BlePeripheral blePeriph, int psm, String mobileDevice) async {
+    _logger.i(
+        'advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
+    await blePeriph.addReadOnlyService(viamSvcUUID, {
+      viamSocksProxyNameCharUUID: mobileDevice,
+      viamSocksProxyPSMCharUUID: '$psm',
+    });
+    await blePeriph.startAdvertising();
+  }
+
+  Future<void> listenAndProxySOCKS(
+      Stream<L2CapChannel> chanStream, bool speedTestMode) async {
+    _logger.i(
+        'in healthy and idle state; scanning for devices to proxy traffic from');
+
+    chanStream.listen((chan) async {
+      _logger.i('BLE-SOCKS bridge established and ready to handle traffic');
+      // default behavior is to not be in speedTestMode, so evaluate that first
+      if (!speedTestMode) {
+        final socksServerProxy = SocksServer();
+        socksServerProxy.connections.listen((connection) async {
+          _logger.i(
+              'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
+          await connection.forward(allowIPv6: true);
+        }).onError((error) {
+          _logger.e('error listening for connections: $error');
+        });
+        unawaited(socksServerProxy
+            .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
+      } else {
+        SpeedTestSocket(chan, _logger);
+        // measure traffic and then drop
+
+        // send traffic back over
+      }
+    }).asFuture();
+  }
+
+  Future<void> manageMachine(
+      BleCentral bleCentral, String mobileDevice, machineToManage) async {
+    _logger.i('scanning for $machineToManage now');
+    late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
+    deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
+      (periphInfo) {
+        deviceSub.pause();
+        _logger.i('found ${periphInfo.name}; connecting');
+        bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
+          _logger.i('connected to $machineToManage');
+
+          BleService? viamSvc;
+          for (int i = 0; i < numRetries; i++) {
+            viamSvc = periph.services.cast<BleService?>().firstWhere(
+                (svc) => svc != null && svc.id == viamSvcUUID,
+                orElse: () => null);
+            if (viamSvc != null) {
+              break;
+            }
+          }
+          if (viamSvc == null) {
+            _logger.e("expected service missing; disconnecting");
+            await periph.disconnect();
+            deviceSub.resume();
+            return;
+          }
+
+          BleCharacteristic? periphNameChar;
+          for (int i = 0; i < numRetries; i++) {
+            periphNameChar = viamSvc.characteristics
+                .cast<BleCharacteristic?>()
+                .firstWhere(
+                    (char) =>
+                        char != null &&
+                        char.id == viamManagedMachineNameCharUUID,
+                    orElse: () => null);
+            if (periphNameChar != null) {
+              break;
+            }
+          }
+          if (periphNameChar == null) {
+            _logger.e(
+                'did not find needed periph name char after discovery; disconnecting');
+            await periph.disconnect();
+            deviceSub.resume();
+            return;
+          }
+
+          final periphName = utf8.decode((await periphNameChar.read())!);
+          if (periphName != machineToManage) {
+            _logger.e('found a different machine $periphName; disconnecting');
+            await periph.disconnect();
+            deviceSub.resume();
+            return;
+          }
+
+          deviceSub.cancel();
+
+          final proxyNameChar = viamSvc.characteristics
+              .cast<BleCharacteristic?>()
+              .firstWhere(
+                  (char) =>
+                      char != null && char.id == viamSocksProxyNameCharUUID,
+                  orElse: () => null);
+          if (proxyNameChar == null) {
+            _logger.w('did not find needed PSM char after discovery');
+            await Future<void>.delayed(const Duration(seconds: 1));
+            _logger.i('disconnecting from machine and trying again');
+            await periph.disconnect();
+            unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
+            return;
+          }
+
+          _logger
+              .i('matched desired machine $periphName; writing our name now');
+
+          try {
+            await proxyNameChar
+                .write(Uint8List.fromList(mobileDevice.codeUnits));
+          } catch (error) {
+            _logger.e(
+                'error writing characteristic: $error; disconnecting from machine and trying again');
+            await periph.disconnect();
+            unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
+            return;
+          }
+
+          _logger.i(
+              'machine to manage knows our name and we will wait for a connection');
+        }).catchError((error) {
+          _logger.e(
+              'error establishing connection with machine to manage: $error; will try again');
+          unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
+        });
+      },
+      onError: (Object e) => _logger.e('manageMachine failed: $e'),
     );
   }
 }
 
-// `main` is an example of how your flutter app might call into `startBLESocksPhoneProxy`
-// Specifically, you will have to provide the values for `mobileDevice` and
-// `machineToManage`.
 void main() {
   runApp(const MyApp());
 }
 
-/* No need to mutate code beneath this line. */
-
-var logger = Logger(printer: SimplePrinter(colors: false));
-
-// Hardcoded Viam BLE UUIDs known by both this code and SOCKS forwarder code.
-const viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
-const viamSocksProxyPSMCharUUID = 'ab76ead2-b6e6-4f12-a053-61cd0eed19f9';
-const viamManagedMachineNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d7';
-const viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
-
-// Give some BLE operations a few retries for resiliency.
-const numRetries = 3;
-
-void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
-  WidgetsFlutterBinding.ensureInitialized();
-  Permission.bluetoothConnect
-      .request()
-      .then((status) => Permission.bluetoothScan.request())
-      .then((status) => Permission.bluetoothAdvertise.request())
-      .then((status) {
-    BlePeripheral.create().then((blePeriph) {
-      final stateStream = blePeriph.getState();
-      late StreamSubscription<AdapterState> streamSub;
-      streamSub = stateStream.listen((state) {
-        if (state == AdapterState.poweredOn) {
-          streamSub.cancel();
-          initializeProxy(blePeriph, mobileDevice, machineToManage);
-        }
-      });
-    });
-    BleCentral.create().then((bleCentral) {
-      final stateStream = bleCentral.getState();
-      late StreamSubscription<AdapterState> streamSub;
-      streamSub = stateStream.listen((state) {
-        if (state == AdapterState.poweredOn) {
-          streamSub.cancel();
-          manageMachine(bleCentral, mobileDevice, machineToManage);
-        }
-      });
-    });
-  }).catchError((error) {
-    logger.e('error requesting bluetooth permissions: $error');
-  });
-}
-
-Future<void> initializeProxy(
-    BlePeripheral blePeriph, String mobileDevice, machineToManage) async {
-  final (proxyPSM, proxyChanStream) = await blePeriph.publishL2capChannel();
-  await advertiseProxyPSM(blePeriph, proxyPSM, mobileDevice);
-  await listenAndProxySOCKS(proxyChanStream);
-}
-
-Future<void> advertiseProxyPSM(
-    BlePeripheral blePeriph, int psm, String mobileDevice) async {
-  logger.i(
-      'advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
-  await blePeriph.addReadOnlyService(viamSvcUUID, {
-    viamSocksProxyNameCharUUID: mobileDevice,
-    viamSocksProxyPSMCharUUID: '$psm',
-  });
-  await blePeriph.startAdvertising();
-}
-
-Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
-  logger.i(
-      'in healthy and idle state; scanning for devices to proxy traffic from');
-
-  chanStream.listen((chan) async {
-    logger.i('BLE-SOCKS bridge established and ready to handle traffic');
-    SpeedTestSocket(chan);
-    logger.i('SOMETHING ACCEPTED');
-
-    // measure traffic and then drop
-
-    // send traffic back over
-
-    // final socksServerProxy = SocksServer();
-    // socksServerProxy.connections.listen((connection) async {
-    //   logger.i(
-    //       'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
-    //   await connection.forward(allowIPv6: true);
-    // }).onError((error) {
-    //   logger.e('error listening for connections: $error');
-    // });
-    // unawaited(socksServerProxy
-    //     .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
-  }).asFuture();
-}
-
-Future<void> manageMachine(
-    BleCentral bleCentral, String mobileDevice, machineToManage) async {
-  logger.i('scanning for $machineToManage now');
-  late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
-  deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
-    (periphInfo) {
-      deviceSub.pause();
-      logger.i('found ${periphInfo.name}; connecting');
-      bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
-        logger.i('connected to $machineToManage');
-
-        BleService? viamSvc;
-        for (int i = 0; i < numRetries; i++) {
-          viamSvc = periph.services.cast<BleService?>().firstWhere(
-              (svc) => svc != null && svc.id == viamSvcUUID,
-              orElse: () => null);
-          if (viamSvc != null) {
-            break;
-          }
-        }
-        if (viamSvc == null) {
-          logger.e("expected service missing; disconnecting");
-          await periph.disconnect();
-          deviceSub.resume();
-          return;
-        }
-
-        BleCharacteristic? periphNameChar;
-        for (int i = 0; i < numRetries; i++) {
-          periphNameChar = viamSvc.characteristics
-              .cast<BleCharacteristic?>()
-              .firstWhere(
-                  (char) =>
-                      char != null && char.id == viamManagedMachineNameCharUUID,
-                  orElse: () => null);
-          if (periphNameChar != null) {
-            break;
-          }
-        }
-        if (periphNameChar == null) {
-          logger.e(
-              'did not find needed periph name char after discovery; disconnecting');
-          await periph.disconnect();
-          deviceSub.resume();
-          return;
-        }
-
-        final periphName = utf8.decode((await periphNameChar.read())!);
-        if (periphName != machineToManage) {
-          logger.e('found a different machine $periphName; disconnecting');
-          await periph.disconnect();
-          deviceSub.resume();
-          return;
-        }
-
-        deviceSub.cancel();
-
-        final proxyNameChar = viamSvc.characteristics
-            .cast<BleCharacteristic?>()
-            .firstWhere(
-                (char) => char != null && char.id == viamSocksProxyNameCharUUID,
-                orElse: () => null);
-        if (proxyNameChar == null) {
-          logger.w('did not find needed PSM char after discovery');
-          await Future<void>.delayed(const Duration(seconds: 1));
-          logger.i('disconnecting from machine and trying again');
-          await periph.disconnect();
-          unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
-          return;
-        }
-
-        logger.i('matched desired machine $periphName; writing our name now');
-
-        try {
-          await proxyNameChar.write(Uint8List.fromList(mobileDevice.codeUnits));
-        } catch (error) {
-          logger.e(
-              'error writing characteristic: $error; disconnecting from machine and trying again');
-          await periph.disconnect();
-          unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
-          return;
-        }
-
-        logger.i(
-            'machine to manage knows our name and we will wait for a connection');
-      }).catchError((error) {
-        logger.e(
-            'error establishing connection with machine to manage: $error; will try again');
-        unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
-      });
-    },
-    onError: (Object e) => logger.e('manageMachine failed: $e'),
-  );
-}
-
-class SpeedTestSocket
-    with StreamFromControllerMixin<Uint8List>, IOSinkFromControllerMixin
-    implements Socket {
+class SpeedTestSocket {
   final L2CapChannel _channel;
-  final CancelableCompleter<void> _completer = CancelableCompleter<void>();
+  final Logger _logger;
 
-  SpeedTestSocket(this._channel) {
-    _read();
-    // _write();
+  SpeedTestSocket(this._channel, this._logger) {
+    _speedTest();
+  }
+  Future<void> _speedTest() async {
+    await _uploadTest();
+    // await _write();
   }
 
-  Future<void> _read() async {
-    var read = 0;
-    Stopwatch stopwatch = Stopwatch()..start();
+  // The structure here should match the corresponding upload_test in the socks
+  // forwarder speed test.
+  Future<void> _uploadTest() async {
     try {
-      while (!_completer.isCompleted) {
-        final data = await _channel.read(256);
-        if (data == null) {
-          return;
+      const bytesPerTest = 200000;
+      const numTests = 5;
+
+      double totalReceived = 0;
+      double totalElapsed = 0;
+      _logger.i("starting upload speed test!");
+      for (var testNum = 1; testNum <= numTests; testNum++) {
+        var read = 0;
+        Stopwatch stopwatch = Stopwatch()..start();
+        while (read < bytesPerTest) {
+          // using 5000 because that seems to average the highest speed.
+          // feel free to increase or decrease this.
+          final data = await _channel.read(5000);
+          if (data == null) {
+            return;
+          }
+          read += data.length;
         }
-        streamController.sink.add(data);
-        read += data.length;
-        logger.i('package num ${data[0]}');
-        logger.i('received $read bytes');
-        // if (read >= 1000000) {
-        //   logger.i("Finished receiving 1MB");
-        //   logger.i('Took ${stopwatch.elapsed}');
-        //   break;
-        // }
+        stopwatch.stop();
+        var mbReceived = read / 1000000;
+        var elapsedTime = stopwatch.elapsedMilliseconds / 1000;
+        var mBytesPS = mbReceived / elapsedTime;
+        var mBitsPS = 8 * mBytesPS;
+        _logger.i('Test #$testNum of $numTests');
+        _logger
+            .i('\tData received: ${mbReceived.toStringAsFixed(3)} megabytes');
+        _logger.i('\tTime elapsed: ${elapsedTime.toStringAsFixed(3)} sec');
+        _logger.i(
+            '\tUpload Speed: ${mBytesPS.toStringAsFixed(3)} megabtyes/s (${mBitsPS.toStringAsFixed(3)} megabits/s)');
+
+        totalReceived += mbReceived;
+        totalElapsed += elapsedTime;
       }
+      var avgMBytesPS = totalReceived / totalElapsed;
+      var avgMBitsPS = 8 * avgMBytesPS;
+      _logger.i('Upload Speed Test Summary');
+      _logger
+          .i('\tTotal received: ${totalReceived.toStringAsFixed(3)} megabytes');
+      _logger.i('\tTotal elapsed: ${totalElapsed.toStringAsFixed(3)} sec');
+      _logger.i(
+          '\tAvg Upload Speed: ${avgMBytesPS.toStringAsFixed(3)} megabtyes/s (${avgMBitsPS.toStringAsFixed(3)} megabits/s)');
     } catch (err) {
       debugPrint('error reading from l2cap channel: $err');
-    } finally {
-      await streamController.sink.close();
     }
   }
 
   Future<void> _write() async {
-    try {
-      await for (final data in ioSinkController.stream) {
-        if (_completer.isCompleted) {
-          return;
-        }
-        await _channel.write(Uint8List.fromList(data));
-      }
-    } catch (err) {
-      debugPrint('error writing to l2cap channel: $err');
-    }
-  }
-
-  @override
-  InternetAddress get address => InternetAddress.anyIPv4;
-
-  @override
-  void destroy() {
-    _completer.complete();
-    streamController.close();
-  }
-
-  @override
-  Uint8List getRawOption(RawSocketOption option) {
-    throw UnimplementedError();
-  }
-
-  /// The port used by this socket.
-  ///
-  /// It's always 1234 and should not matter.
-  @override
-  int get port => 1234;
-
-  @override
-  InternetAddress get remoteAddress => InternetAddress.anyIPv4;
-
-  @override
-  int get remotePort => 4321;
-
-  @override
-  // we don't support any options which may cause semantic issues in the future?
-  bool setOption(SocketOption option, bool enabled) {
-    if (option == SocketOption.tcpNoDelay) {
-      debugPrint('SpeedTestSocket ignoring setOption for tcpNoDelay=$enabled');
-    } else {
-      debugPrint('SpeedTestSocket ignoring setOption');
-    }
-    return false;
-  }
-
-  @override
-  // we don't support any options which may cause semantic issues in the future?
-  void setRawOption(RawSocketOption option) {
-    debugPrint('SpeedTestSocket ignoring setRawOption $option');
-  }
-
-  @override
-  Future<void> close() async {
-    destroy();
-    await super.close();
-    await _channel.close();
+    // try {
+    //   await for (final data in ioSinkController.stream) {
+    //     if (_completer.isCompleted) {
+    //       return;
+    //     }
+    //     await _channel.write(Uint8List.fromList(data));
+    //   }
+    // } catch (err) {
+    //   debugPrint('error writing to l2cap channel: $err');
+    // }
   }
 }
