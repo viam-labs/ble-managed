@@ -326,11 +326,9 @@ impl L2CAPStreamMux {
 
     // The structure here should match the corresponding _uploadTest in the phone proxy app
     async fn upload_test(
-        &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
         let bytes_per_test = 200000 as f64;
-        let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
         info!("Starting upload speed test!");
         let mut test_num = 1;
         let num_tests = 2;
@@ -349,10 +347,6 @@ impl L2CAPStreamMux {
                 let a = [(); BYTES_PER_WRITE].map(|_| msg_num);
                 if let Err(e) = l2cap_stream_write.write_all(&a).await {
                     error!("Error writing to L2CAP stream; ending network test: {e}");
-                    // disconnect
-                    if let Err(e) = stop_due_to_disconnect_send.send(true).await {
-                        error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
-                    }
                     return
                 }
                 total += a.len();
@@ -392,7 +386,6 @@ impl L2CAPStreamMux {
     }
 
     async fn download_test(
-        &mut self,
         mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
     ) {
         let bytes_per_test = 200000 as f64;
@@ -467,8 +460,8 @@ impl L2CAPStreamMux {
     ){
         let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
-            self.upload_test(l2cap_stream_write).await;
-            self.download_test(l2cap_stream_read).await;
+            upload_test(l2cap_stream_write).await;
+            download_test(l2cap_stream_read).await;
             // disconnect
             if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                 error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
