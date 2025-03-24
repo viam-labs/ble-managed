@@ -80,8 +80,7 @@ impl L2CAPStreamMux {
             mux.pipe_in_tcp(l2cap_stream_write, tcp_to_l2cap_receive);
             mux.send_keepalive_frames_forever(); 
         } else {
-            mux.upload_test(l2cap_stream_write);
-            mux.download_test(l2cap_stream_read);
+            mux.speed_test(l2cap_stream_write, l2cap_stream_read);
         }
 
         info!("Started L2CAP stream multiplexer");
@@ -331,6 +330,7 @@ impl L2CAPStreamMux {
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
         let bytes_per_test = 200000 as f64;
+        let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
         info!("Starting upload speed test!");
         let mut test_num = 1;
         let num_tests = 2;
@@ -400,7 +400,7 @@ impl L2CAPStreamMux {
         let mut test_num = 1;
         let num_tests = 5;
 
-        let mut total_sent: f64 = 0.0;
+        let mut total_recv: f64 = 0.0;
         let mut total_elapsed: f64 = 0.0;
         loop {
             let mut total = 0;
@@ -465,7 +465,6 @@ impl L2CAPStreamMux {
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
         mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
     ){
-        let bytes_per_test = 200000 as f64;
         let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
             self.upload_test(l2cap_stream_write).await;
