@@ -81,10 +81,8 @@ impl L2CAPStreamMux {
             mux.send_keepalive_frames_forever(); 
         } else {
             mux.upload_test(l2cap_stream_write);
-            mux.pipe_in_l2cap(l2cap_stream_read, l2cap_to_tcp_send);
-            mux.pipe_out_tcp(Chunker::new(l2cap_to_tcp_receive));
+            mux.download_test(l2cap_stream_read);
         }
-
 
         info!("Started L2CAP stream multiplexer");
         mux
@@ -328,71 +326,150 @@ impl L2CAPStreamMux {
     }
 
     // The structure here should match the corresponding _uploadTest in the phone proxy app
-    fn upload_test(
+    async fn upload_test(
         &mut self,
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
         let bytes_per_test = 200000 as f64;
-        let stop_due_to_disconnect_send = self.stop_due_to_disconnect_send.clone();
-        let handler = tokio::spawn(async move {
-            info!("Starting upload speed test!");
-            let mut test_num = 1;
-            let num_tests = 5;
+        info!("Starting upload speed test!");
+        let mut test_num = 1;
+        let num_tests = 2;
 
-            let mut total_sent: f64 = 0.0;
-            let mut total_elapsed: f64 = 0.0;
+        let mut total_sent: f64 = 0.0;
+        let mut total_elapsed: f64 = 0.0;
+        loop {
+            let mut total = 0;
+            let mut msg_num = 0;
+            let start = Instant::now();
             loop {
-                let mut total = 0;
-                let mut msg_num = 0;
-                let start = Instant::now();
-                loop {
-                    // for whatever reason, 29000 bytes seems to be the largest number that works reliably on test device (Pixel 7 on Android 15).
-                    // using 25000 because that seems to average the highest speed.
-                    // feel free to increase or decrease this. 
-                    const BYTES_PER_WRITE: usize = 25000;
-                    let a = [(); BYTES_PER_WRITE].map(|_| msg_num);
-                    if let Err(e) = l2cap_stream_write.write_all(&a).await {
-                        error!("Error writing to L2CAP stream; ending network test: {e}");
-                        // disconnect
-                        if let Err(e) = stop_due_to_disconnect_send.send(true).await {
-                            error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
-                        }
-                        return
+                // for whatever reason, 29000 bytes seems to be the largest number that works reliably on test device (Pixel 7 on Android 15).
+                // using 25000 because that seems to average the highest speed.
+                // feel free to increase or decrease this. 
+                const BYTES_PER_WRITE: usize = 25000;
+                let a = [(); BYTES_PER_WRITE].map(|_| msg_num);
+                if let Err(e) = l2cap_stream_write.write_all(&a).await {
+                    error!("Error writing to L2CAP stream; ending network test: {e}");
+                    // disconnect
+                    if let Err(e) = stop_due_to_disconnect_send.send(true).await {
+                        error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
                     }
-                    total += a.len();
-    
-                    if total >= bytes_per_test as usize {
-                        let mb_sent = total as f64/1000000.;
-                        let elapsed_time = start.elapsed().as_millis() as f64/1000.;
-
-                        let mut test_log = String::new();
-                        test_log.push_str("\n");
-                        test_log.push_str(&format!("Test #{} of {}\n", test_num, num_tests));
-                        test_log.push_str(&format!("\tData sent: {:.3} megabytes\n", mb_sent));
-                        test_log.push_str(&format!("\tTime elapsed: {:.3}s\n", elapsed_time));
-                        test_log.push_str(&format!("\tUpload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", mb_sent/elapsed_time, 8.*mb_sent/elapsed_time));
-                        info!("{}", test_log);
-
-                        total_sent += mb_sent;
-                        total_elapsed += elapsed_time;
-                        // await to make sure the other side has fully received data
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        break
-                    }
-                    msg_num += 1;
+                    return
                 }
-                test_num += 1;
-                if test_num > num_tests {
+                total += a.len();
+
+                if total >= bytes_per_test as usize {
+                    let mb_sent = total as f64/1000000.;
+                    let elapsed_time = start.elapsed().as_millis() as f64/1000.;
+
                     let mut test_log = String::new();
                     test_log.push_str("\n");
-                    test_log.push_str("Upload Speed Test Summary:\n");
-                    test_log.push_str(&format!("\tTotal sent: {:.3} megabytes\n", total_sent));
-                    test_log.push_str(&format!("\tTotal elapsed: {:.3}s\n", total_elapsed));
-                    test_log.push_str(&format!("\tAvg Upload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", total_sent/total_elapsed, 8.*total_sent/total_elapsed));
+                    test_log.push_str(&format!("Test #{} of {}\n", test_num, num_tests));
+                    test_log.push_str(&format!("\tData sent: {:.3} megabytes\n", mb_sent));
+                    test_log.push_str(&format!("\tTime elapsed: {:.3}s\n", elapsed_time));
+                    test_log.push_str(&format!("\tUpload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", mb_sent/elapsed_time, 8.*mb_sent/elapsed_time));
                     info!("{}", test_log);
+
+                    total_sent += mb_sent;
+                    total_elapsed += elapsed_time;
+                    // await to make sure the other side has fully received data
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     break
                 }
+                msg_num += 1;
             }
+            test_num += 1;
+            if test_num > num_tests {
+                let mut test_log = String::new();
+                test_log.push_str("\n");
+                test_log.push_str("Upload Speed Test Summary:\n");
+                test_log.push_str(&format!("\tTotal sent: {:.3} megabytes\n", total_sent));
+                test_log.push_str(&format!("\tTotal elapsed: {:.3}s\n", total_elapsed));
+                test_log.push_str(&format!("\tAvg Upload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", total_sent/total_elapsed, 8.*total_sent/total_elapsed));
+                info!("{}", test_log);
+                break
+            }
+        }
+    }
+
+    async fn download_test(
+        &mut self,
+        mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
+    ) {
+        let bytes_per_test = 200000 as f64;
+        info!("Starting download speed test!");
+        let mut test_num = 1;
+        let num_tests = 5;
+
+        let mut total_sent: f64 = 0.0;
+        let mut total_elapsed: f64 = 0.0;
+        loop {
+            let mut total = 0;
+            let mut msg_num = 0;
+            let start = Instant::now();
+            loop {
+                // for whatever reason, 29000 bytes seems to be the largest number that works reliably on test device (Pixel 7 on Android 15).
+                // using 25000 because that seems to average the highest speed.
+                // feel free to increase or decrease this. 
+                const BYTES_PER_WRITE: usize = 25000;
+                let mut chunk_buf = vec![0u8; RECV_MTU as usize];
+                let n = match l2cap_stream_read.read(&mut chunk_buf).await {
+                    Ok(n) if n > 0 => n,
+                    Ok(_) => {
+                        info!("L2CAP stream closed");
+                        break;
+                    }
+                    Err(e) => {
+                        warn!("Error reading from L2CAP stream: {e}");
+                        break;
+                    }
+                };
+                chunk_buf.truncate(n);
+                total += n;
+
+                if total >= bytes_per_test as usize {
+                    let mb_recv = total as f64/1000000.;
+                    let elapsed_time = start.elapsed().as_millis() as f64/1000.;
+
+                    let mut test_log = String::new();
+                    test_log.push_str("\n");
+                    test_log.push_str(&format!("Test #{} of {}\n", test_num, num_tests));
+                    test_log.push_str(&format!("\tData received: {:.3} megabytes\n", mb_recv));
+                    test_log.push_str(&format!("\tTime elapsed: {:.3}s\n", elapsed_time));
+                    test_log.push_str(&format!("\tDownload Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", mb_recv/elapsed_time, 8.*mb_recv/elapsed_time));
+                    info!("{}", test_log);
+
+                    total_recv += mb_recv;
+                    total_elapsed += elapsed_time;
+                    // await to make sure the other side has fully received data
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    break
+                }
+                msg_num += 1;
+            }
+            test_num += 1;
+            if test_num > num_tests {
+                let mut test_log = String::new();
+                test_log.push_str("\n");
+                test_log.push_str("Download Speed Test Summary:\n");
+                test_log.push_str(&format!("\tTotal received: {:.3} megabytes\n", total_recv));
+                test_log.push_str(&format!("\tTotal elapsed: {:.3}s\n", total_elapsed));
+                test_log.push_str(&format!("\tAvg Download Speed: {:.3} megabytes/s ({:.3} megabits/s)\n", total_recv/total_elapsed, 8.*total_recv/total_elapsed));
+                info!("{}", test_log);
+                break
+            }
+        }
+    }
+
+    fn speed_test(
+        &mut self,
+        mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
+        mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
+    ){
+        let bytes_per_test = 200000 as f64;
+        let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
+        let handler = tokio::spawn(async move {
+            self.upload_test(l2cap_stream_write).await;
+            self.download_test(l2cap_stream_read).await;
             // disconnect
             if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                 error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
@@ -400,7 +477,7 @@ impl L2CAPStreamMux {
         });
         self.tasks.push(handler);
     }
-
+    
     /// Reads from `tcp_to_l2cap_receive` into `l2cap_stream_write`.
     fn pipe_in_tcp(
         &mut self,
