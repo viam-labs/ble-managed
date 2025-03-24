@@ -433,8 +433,6 @@ impl L2CAPStreamMux {
 
                     total_recv += mb_recv;
                     total_elapsed += elapsed_time;
-                    // await to make sure the other side has fully received data
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     break
                 }
                 msg_num += 1;
