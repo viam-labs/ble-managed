@@ -387,7 +387,24 @@ impl L2CAPStreamMux {
 
     async fn download_test(
         mut l2cap_stream_read: ReadHalf<l2cap::Stream>,
+        mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
+        // wait for a handshake
+        let n = match l2cap_stream_read.read(&mut chunk_buf).await {
+            Ok(n) if n > 0 => n,
+            Ok(_) => {
+                info!("L2CAP stream closed; ending network test");
+                return;
+            }
+            Err(e) => {
+                warn!("Error reading from L2CAP stream; ending network test: {e}");
+                return;
+            }
+        };
+        if let Err(e) = l2cap_stream_write.write_all([0]).await {
+            error!("Error writing to L2CAP stream; ending network test: {e}");
+            return
+        }
         let bytes_per_test = 200000 as f64;
         info!("Starting download speed test!");
         let mut test_num = 1;
@@ -397,13 +414,11 @@ impl L2CAPStreamMux {
         let mut total_elapsed: f64 = 0.0;
         loop {
             let mut total = 0;
-            let mut msg_num = 0;
             let start = Instant::now();
             loop {
                 // for whatever reason, 29000 bytes seems to be the largest number that works reliably on test device (Pixel 7 on Android 15).
                 // using 25000 because that seems to average the highest speed.
                 // feel free to increase or decrease this. 
-                const BYTES_PER_WRITE: usize = 25000;
                 let mut chunk_buf = vec![0u8; RECV_MTU as usize];
                 let n = match l2cap_stream_read.read(&mut chunk_buf).await {
                     Ok(n) if n > 0 => n,
@@ -459,7 +474,7 @@ impl L2CAPStreamMux {
         let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
             Self::upload_test(l2cap_stream_write).await;
-            Self::download_test(l2cap_stream_read).await;
+            Self::download_test(l2cap_stream_read,l2cap_stream_write).await;
             // disconnect
             if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                 error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
