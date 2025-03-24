@@ -460,8 +460,8 @@ impl L2CAPStreamMux {
     ){
         let stop_due_to_disconnect_send: Arc<Sender<bool>> = self.stop_due_to_disconnect_send.clone();
         let handler = tokio::spawn(async move {
-            upload_test(l2cap_stream_write).await;
-            download_test(l2cap_stream_read).await;
+            Self::upload_test(l2cap_stream_write).await;
+            Self::download_test(l2cap_stream_read).await;
             // disconnect
             if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                 error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
