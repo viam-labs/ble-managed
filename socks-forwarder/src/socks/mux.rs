@@ -390,7 +390,7 @@ impl L2CAPStreamMux {
         mut l2cap_stream_write: WriteHalf<l2cap::Stream>,
     ) {
         // wait for a handshake
-        let n = match l2cap_stream_read.read(&mut chunk_buf).await {
+        let n = match l2cap_stream_read.read([0]).await {
             Ok(n) if n > 0 => n,
             Ok(_) => {
                 info!("L2CAP stream closed; ending network test");
@@ -401,7 +401,7 @@ impl L2CAPStreamMux {
                 return;
             }
         };
-        if let Err(e) = l2cap_stream_write.write_all([0]).await {
+        if let Err(e) = l2cap_stream_write.write_all(&[u8]).await {
             error!("Error writing to L2CAP stream; ending network test: {e}");
             return
         }
@@ -450,7 +450,6 @@ impl L2CAPStreamMux {
                     total_elapsed += elapsed_time;
                     break
                 }
-                msg_num += 1;
             }
             test_num += 1;
             if test_num > num_tests {
