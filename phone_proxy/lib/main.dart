@@ -12,7 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socks5_proxy/socks_server.dart';
-import 'package:viam_sdk/viam_sdk.dart' as viam;
+import 'package:viam_sdk/viam_sdk.dart' as vm;
 
 // The following three classes are examples of a basic flutter app setup.
 // Replace them with the implementation of your flutter app.
@@ -36,7 +36,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  viam.RobotClient? _robot;
+  vm.RobotClient? _robot;
   String _sensorData = "No sensor data";
 
   @override
@@ -46,23 +46,59 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _connectToViam() async {
-    final options = viam.RobotClientOptions.withApiKey(
-        "829d43b8-878d-4fd7-bf46-678e1badc434",
-        "kkbo65gpvucc5rhtmw37sw8imn431hcn");
+    try {
+      final options = vm.RobotClientOptions.withApiKey(
+          "829d43b8-878d-4fd7-bf46-678e1badc434",
+          "kkbo65gpvucc5rhtmw37sw8imn431hcn");
 
-    _robot = await viam.RobotClient.atAddress(
-        'juliespi-main.myj4cbg09b.viam.cloud', options);
+      _robot = await vm.RobotClient.atAddress(
+          'juliespi-main.myj4cbg09b.viam.cloud', options);
+
+      setState(() {
+        _sensorData = "Connected to robot!";
+      });
+
+      logger.i("Successfully connected to robot.");
+    } catch (e) {
+      setState(() {
+        _sensorData = "Failed to connect: $e";
+      });
+
+      logger.e("Error connecting to robot: $e");
+    }
   }
 
   Future<void> _getSensorReadings() async {
-    if (_robot == null) return;
+    if (_robot == null) {
+      setState(() {
+        _sensorData = "Not connected. Trying to reconnect...";
+      });
+      await _connectToViam();
+      if (_robot == null) return;
+    }
 
-    final mySensor = viam.Sensor.fromRobot(_robot!, 'mysensor');
-    final readings = await mySensor.readings();
+    try {
+      final mySensor = vm.Sensor.fromRobot(_robot!, 'mysensor');
+      final readings = await mySensor.readings();
 
-    setState(() {
-      _sensorData = readings.toString();
-    });
+      setState(() {
+        _sensorData = readings.toString();
+      });
+
+      logger.i("Sensor readings: $readings");
+    } catch (e) {
+      setState(() {
+        _sensorData = "Error getting sensor data: $e";
+      });
+
+      logger.e("Error fetching sensor data: $e");
+
+      if (e.toString().contains("SESSION_EXPIRED")) {
+        _robot?.close();
+        _robot = null;
+        await _connectToViam();
+      }
+    }
   }
 
   @override
@@ -143,6 +179,7 @@ void main() {
 void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
   runZonedGuarded(
     () {
+      requestBluetoothPermissions();
       startBLESocksPhoneProxy(mobileDevice, machineToManage);
       if (shouldCallRunApp) {
         runApp(const MyApp());
@@ -176,6 +213,12 @@ const viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
 
 // Give some BLE operations a few retries for resiliency.
 const numRetries = 3;
+
+Future<void> requestBluetoothPermissions() async {
+  await Permission.bluetoothConnect.request();
+  await Permission.bluetoothScan.request();
+  await Permission.bluetoothAdvertise.request();
+}
 
 void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
   WidgetsFlutterBinding.ensureInitialized();
