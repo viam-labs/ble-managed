@@ -54,15 +54,11 @@ class _MyHomePageState extends State<MyHomePage> {
       robot = await vm.RobotClient.atAddress(
           'juliespi-main.myj4cbg09b.viam.cloud', options);
 
-      // final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
-      // final readings = await mySensor.readings();
-
-      // setState(() {
-      //   _sensorData = readings.toString();
-      // });
+      final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
+      final readings = await mySensor.readings();
 
       setState(() {
-        _sensorData = "Connected to robot!";
+        _sensorData = readings.toString();
       });
 
       logger.i("Successfully connected to robot.");
@@ -76,28 +72,9 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _getSensorReadings() async {
-    /* simpleest way but not working --> 
     if (robot == null) return;
 
-    final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
-    final readings = await mySensor.readings();
-
-    setState(() {
-      _sensorData = readings.toString();
-    });
-    ends here --> */
-
-    if (robot == null) {
-      setState(() {
-        _sensorData = "Not connected. Trying to reconnect...";
-      });
-      await _connectToViam();
-      if (robot == null) return;
-    }
-
     try {
-      // The issue is likely here - 'mysensor' might not be the correct name
-      // or the sensor might not be properly configured on your robot
       final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
       final readings = await mySensor.readings();
 
