@@ -36,7 +36,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  vm.RobotClient? _robot;
+  vm.RobotClient? robot;
   String _sensorData = "No sensor data";
 
   @override
@@ -51,8 +51,15 @@ class _MyHomePageState extends State<MyHomePage> {
           "829d43b8-878d-4fd7-bf46-678e1badc434",
           "kkbo65gpvucc5rhtmw37sw8imn431hcn");
 
-      _robot = await vm.RobotClient.atAddress(
+      robot = await vm.RobotClient.atAddress(
           'juliespi-main.myj4cbg09b.viam.cloud', options);
+
+      // final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
+      // final readings = await mySensor.readings();
+
+      // setState(() {
+      //   _sensorData = readings.toString();
+      // });
 
       setState(() {
         _sensorData = "Connected to robot!";
@@ -69,16 +76,29 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _getSensorReadings() async {
-    if (_robot == null) {
+    /* simpleest way but not working --> 
+    if (robot == null) return;
+
+    final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
+    final readings = await mySensor.readings();
+
+    setState(() {
+      _sensorData = readings.toString();
+    });
+    ends here --> */
+
+    if (robot == null) {
       setState(() {
         _sensorData = "Not connected. Trying to reconnect...";
       });
       await _connectToViam();
-      if (_robot == null) return;
+      if (robot == null) return;
     }
 
     try {
-      final mySensor = vm.Sensor.fromRobot(_robot!, 'mysensor');
+      // The issue is likely here - 'mysensor' might not be the correct name
+      // or the sensor might not be properly configured on your robot
+      final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
       final readings = await mySensor.readings();
 
       setState(() {
@@ -94,8 +114,8 @@ class _MyHomePageState extends State<MyHomePage> {
       logger.e("Error fetching sensor data: $e");
 
       if (e.toString().contains("SESSION_EXPIRED")) {
-        _robot?.close();
-        _robot = null;
+        robot?.close();
+        robot = null;
         await _connectToViam();
       }
     }
@@ -129,22 +149,24 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() {
-    _robot?.close();
+    robot?.close();
     super.dispose();
   }
 
-  Future<void> loadData() async {
-    while (true) {
-      await Future<void>.delayed(const Duration(seconds: 1));
-      setState(() {});
-    }
-  }
+  // Future<void> loadData() async {
+  //   while (true) {
+  //     await Future<void>.delayed(const Duration(seconds: 1));
+  //     setState(() {});
+  //   }
+  // }
 }
 
 // `main` is an example of how your flutter app might call into `startBLESocksPhoneProxy`
 // Specifically, you will have to provide the values for `mobileDevice` and
 // `machineToManage`.
 void main() {
+  // Initialize Flutter binding first
+  WidgetsFlutterBinding.ensureInitialized();
   // `mobileDevice` should be stored somewhere in a mobile app. It should be
   // unique to a mobile device such that `startBLESocksPhoneProxy` can:
   // - Advertise `mobileDevice` as a readable characteristic
@@ -179,11 +201,16 @@ void main() {
 void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
   runZonedGuarded(
     () {
-      requestBluetoothPermissions();
-      startBLESocksPhoneProxy(mobileDevice, machineToManage);
-      if (shouldCallRunApp) {
-        runApp(const MyApp());
-      }
+      // requestBluetoothPermissions().then((_) {
+      Permission.bluetoothConnect
+          .request()
+          .then((status) => Permission.bluetoothAdvertise.request())
+          .then((status) {
+        startBLESocksPhoneProxy(mobileDevice, machineToManage);
+        if (shouldCallRunApp) {
+          runApp(const MyApp());
+        }
+      });
     },
     (error, stackTrace) {
       if (error is L2CapDisconnectedError) {
