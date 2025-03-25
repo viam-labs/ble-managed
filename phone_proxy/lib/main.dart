@@ -42,40 +42,55 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _connectToViam();
+    connectToViam();
   }
 
-  Future<void> _connectToViam() async {
-    try {
-      final options = vm.RobotClientOptions.withApiKey(
-          "829d43b8-878d-4fd7-bf46-678e1badc434",
-          "kkbo65gpvucc5rhtmw37sw8imn431hcn");
+  // Future<void> _connectToViam() async {
+  //   try {
+  //     final options = vm.RobotClientOptions.withApiKey(
+  //         "829d43b8-878d-4fd7-bf46-678e1badc434",
+  //         "kkbo65gpvucc5rhtmw37sw8imn431hcn");
 
-      robot = await vm.RobotClient.atAddress(
-          'juliespi-main.myj4cbg09b.viam.cloud', options);
+  //     robot = await vm.RobotClient.atAddress(
+  //         'juliespi-main.myj4cbg09b.viam.cloud', options);
 
-      final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
-      final readings = await mySensor.readings();
+  //     final mySensor = vm.Sensor.fromRobot(robot!, 'sensor-1');
+  //     final readings = await mySensor.readings();
 
-      setState(() {
-        _sensorData = readings.toString();
-      });
+  //     setState(() {
+  //       _sensorData = readings.toString();
+  //     });
 
-      logger.i("Successfully connected to robot.");
-    } catch (e) {
-      setState(() {
-        _sensorData = "Failed to connect: $e";
-      });
+  //     logger.i("Successfully connected to robot.");
+  //   } catch (e) {
+  //     setState(() {
+  //       _sensorData = "Failed to connect: $e";
+  //     });
 
-      logger.e("Error connecting to robot: $e");
-    }
+  //     logger.e("Error connecting to robot: $e");
+  //   }
+  // }
+  Future<void> connectToViam() async {
+    const host = 'juliespi-main.myj4cbg09b.viam.cloud';
+    const apiKeyID = '829d43b8-878d-4fd7-bf46-678e1badc434';
+    const apiKey = 'kkbo65gpvucc5rhtmw37sw8imn431hcn';
+
+    robot = await vm.RobotClient.atAddress(
+      host,
+      vm.RobotClientOptions.withApiKey(apiKeyID, apiKey),
+    );
+    _getSensorReadings();
+    print(robot!.resourceNames);
   }
 
   Future<void> _getSensorReadings() async {
+    print("might be getting sensor readings");
+    print("robot null? ${robot == null}");
     if (robot == null) return;
+    print("actually getting sensor readings");
 
     try {
-      final mySensor = vm.Sensor.fromRobot(robot!, 'mysensor');
+      final mySensor = vm.Sensor.fromRobot(robot!, 'sensor-1');
       final readings = await mySensor.readings();
 
       setState(() {
@@ -93,7 +108,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (e.toString().contains("SESSION_EXPIRED")) {
         robot?.close();
         robot = null;
-        await _connectToViam();
+        await connectToViam();
       }
     }
   }
