@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socks5_proxy/socks_server.dart';
+import 'package:viam_sdk/viam_sdk.dart' as vm;
 
 // The following three classes are examples of a basic flutter app setup.
 // Replace them with the implementation of your flutter app.
@@ -24,6 +25,10 @@ class MyApp extends StatelessWidget {
         title: 'Phone Proxy', home: MyHomePage(title: 'Phone Proxy'));
   }
 }
+
+// I added this so I can see directly in the UI if the socks forwarder is connected
+bool isSocksForwarderConnected = false;
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
 
@@ -32,32 +37,131 @@ class MyHomePage extends StatefulWidget {
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
+
 class _MyHomePageState extends State<MyHomePage> {
-  _MyHomePageState() {
-    loadData();
+  vm.RobotClient? robot;
+  String _sensorData = "No sensor data";
+  bool _socksForwarderConnected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    connectToViam();
+    _startConnectionStatusTimer();
+  }
+
+  void _startConnectionStatusTimer() {
+    // Check connection status every second
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _socksForwarderConnected = isSocksForwarderConnected;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  Future<void> connectToViam() async {
+    const host = 'juliespi-main.myj4cbg09b.viam.cloud';
+    const apiKeyID = '829d43b8-878d-4fd7-bf46-678e1badc434';
+    const apiKey = 'kkbo65gpvucc5rhtmw37sw8imn431hcn';
+
+    robot = await vm.RobotClient.atAddress(
+      host,
+      vm.RobotClientOptions.withApiKey(apiKeyID, apiKey),
+    );
+    _getSensorReadings();
+    print(robot!.resourceNames);
+  }
+
+  Future<void> _getSensorReadings() async {
+    print("might be getting sensor readings");
+    print("robot null? ${robot == null}");
+    if (robot == null) return;
+    print("actually getting sensor readings");
+
+    try {
+      final mySensor = vm.Sensor.fromRobot(robot!, 'sensor-1');
+      final readings = await mySensor
+          .readings(); //really high latency, 400-500 ms,  connection is super slow .
+
+      setState(() {
+        _sensorData = readings.toString();
+      });
+
+      logger.i("Sensor readings: $readings");
+    } catch (e) {
+      setState(() {
+        _sensorData = "Error getting sensor data: $e";
+        print("Error getting sensor data: $e");
+      });
+
+      logger.e("Error fetching sensor data: $e");
+
+      if (e.toString().contains("SESSION_EXPIRED")) {
+        robot?.close();
+        robot = null;
+        await connectToViam();
+        //disable sesions from client --> that would help with this problem
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          title: Text(widget.title),
-        ));
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(widget.title),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+                onPressed: connectToViam,
+                child: const Text('Reconnect to viam')),
+            const SizedBox(height: 40),
+            if (!_socksForwarderConnected)
+              const Text(
+                  'Connection failed - you may be too far away from machine'),
+            ElevatedButton(
+                onPressed: _getSensorReadings,
+                child: const Text('Get Sensor Readings')),
+            const SizedBox(height: 20),
+            const Text('Sensor Data:'),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(_sensorData),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Future<void> loadData() async {
-    while (true) {
-      await Future<void>.delayed(const Duration(seconds: 1));
-      setState(() {});
-    }
+  @override
+  void dispose() {
+    robot?.close();
+    super.dispose();
   }
+
+  // Future<void> loadData() async {
+  //   while (true) {
+  //     await Future<void>.delayed(const Duration(seconds: 1));
+  //     setState(() {});
+  //   }
+  // }
 }
 
 // `main` is an example of how your flutter app might call into `startBLESocksPhoneProxy`
 // Specifically, you will have to provide the values for `mobileDevice` and
 // `machineToManage`.
 void main() {
+  // Initialize Flutter binding first
+  WidgetsFlutterBinding.ensureInitialized();
   // `mobileDevice` should be stored somewhere in a mobile app. It should be
   // unique to a mobile device such that `startBLESocksPhoneProxy` can:
   // - Advertise `mobileDevice` as a readable characteristic
@@ -84,19 +188,26 @@ void main() {
   // reinvocation of the `mainLoop` method below. You may want to use
   // a `Completer` flutter object to cancel or restart the current `mainLoop`
   // if this behavior is desired.
-  var machineToManage = 'TODO';
+  var machineToManage = '329cf2c8-98a6-4577-a8d0-93305b0834bc';
 
   mainLoop(mobileDevice, machineToManage, true);
 }
 
 void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
+  isSocksForwarderConnected = false;
   runZonedGuarded(
     () {
-      startBLESocksPhoneProxy(mobileDevice, machineToManage);
-      if (shouldCallRunApp) {
-        runApp(const MyApp());
-      }
-    }, (error, stackTrace) {
+      Permission.bluetoothConnect
+          .request()
+          .then((status) => Permission.bluetoothAdvertise.request())
+          .then((status) {
+        startBLESocksPhoneProxy(mobileDevice, machineToManage);
+        if (shouldCallRunApp) {
+          runApp(const MyApp());
+        }
+      });
+    },
+    (error, stackTrace) {
       if (error is L2CapDisconnectedError) {
         // You may want to execute custom code in this block. Something like notifying the
         // app user that there's been a disconnection and to move back in range of the
@@ -125,7 +236,15 @@ const viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
 // Give some BLE operations a few retries for resiliency.
 const numRetries = 3;
 
+Future<void> requestBluetoothPermissions() async {
+  await Permission.bluetoothConnect.request();
+  await Permission.bluetoothScan.request();
+  await Permission.bluetoothAdvertise.request();
+}
+
 void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
+  // we just make this call after the pair has been made/established (the pair has already happened)
+// we onlyy want there ti be one pairing request
   WidgetsFlutterBinding.ensureInitialized();
   Permission.bluetoothConnect
       .request()
@@ -157,14 +276,17 @@ void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
   });
 }
 
-Future<void> initializeProxy(BlePeripheral blePeriph, String mobileDevice, machineToManage) async {
+Future<void> initializeProxy(
+    BlePeripheral blePeriph, String mobileDevice, machineToManage) async {
   final (proxyPSM, proxyChanStream) = await blePeriph.publishL2capChannel();
   await advertiseProxyPSM(blePeriph, proxyPSM, mobileDevice);
   await listenAndProxySOCKS(proxyChanStream);
 }
 
-Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm, String mobileDevice) async {
-  logger.i('advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
+Future<void> advertiseProxyPSM(
+    BlePeripheral blePeriph, int psm, String mobileDevice) async {
+  logger.i(
+      'advertising self ($mobileDevice) and publishing SOCKS5 proxy PSM: $psm');
   await blePeriph.addReadOnlyService(viamSvcUUID, {
     viamSocksProxyNameCharUUID: mobileDevice,
     viamSocksProxyPSMCharUUID: '$psm',
@@ -174,24 +296,29 @@ Future<void> advertiseProxyPSM(BlePeripheral blePeriph, int psm, String mobileDe
 
 Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   var chanCount = 0;
-  logger.i('in healthy and idle state; scanning for devices to proxy traffic from');
-
+  logger.i(
+      'in healthy and idle state; scanning for devices to proxy traffic from');
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
     logger.i('BLE-SOCKS bridge established and ready to handle traffic');
+    isSocksForwarderConnected = true;
     final socksServerProxy = SocksServer();
     socksServerProxy.connections.listen((connection) async {
       logger.i(
           'forwarding ${connection.address.address}:${connection.port} -> ${connection.desiredAddress.address}:${connection.desiredPort}');
       await connection.forward(allowIPv6: true);
-    }).onError((error) { logger.e('error listening for connections: $error'); });
+    }).onError((error) {
+      logger.e('error listening for connections: $error');
+      isSocksForwarderConnected = false;
+    });
 
     unawaited(socksServerProxy
         .addServerSocket(L2CapChannelServerSocketUtils.multiplex(chan)));
   }).asFuture();
 }
 
-Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineToManage) async {
+Future<void> manageMachine(
+    BleCentral bleCentral, String mobileDevice, machineToManage) async {
   logger.i('scanning for $machineToManage now');
   late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
@@ -273,9 +400,11 @@ Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineTo
           return;
         }
 
-        logger.i('machine to manage knows our name and we will wait for a connection');
+        logger.i(
+            'machine to manage knows our name and we will wait for a connection');
       }).catchError((error) {
-        logger.e('error establishing connection with machine to manage: $error; will try again');
+        logger.e(
+            'error establishing connection with machine to manage: $error; will try again');
         unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
       });
     },
