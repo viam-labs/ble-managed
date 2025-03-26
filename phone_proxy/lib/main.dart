@@ -84,7 +84,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       final mySensor = vm.Sensor.fromRobot(robot!, 'sensor-1');
-      final readings = await mySensor.readings();
+      final readings = await mySensor
+          .readings(); //really high latency, 400-500 ms,  connection is super slow .
 
       setState(() {
         _sensorData = readings.toString();
@@ -103,6 +104,7 @@ class _MyHomePageState extends State<MyHomePage> {
         robot?.close();
         robot = null;
         await connectToViam();
+        //disable sesions from client --> that would help with this problem
       }
     }
   }
@@ -241,6 +243,8 @@ Future<void> requestBluetoothPermissions() async {
 }
 
 void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
+  // we just make this call after the pair has been made/established (the pair has already happened)
+// we onlyy want there ti be one pairing request
   WidgetsFlutterBinding.ensureInitialized();
   Permission.bluetoothConnect
       .request()
