@@ -26,6 +26,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// I added this so I can see directly in the UI if the socks forwarder is connected
+bool isSocksForwarderConnected = false;
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
 
@@ -38,38 +41,28 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   vm.RobotClient? robot;
   String _sensorData = "No sensor data";
+  bool _socksForwarderConnected = false;
 
   @override
   void initState() {
     super.initState();
     connectToViam();
+    _startConnectionStatusTimer();
   }
 
-  // Future<void> _connectToViam() async {
-  //   try {
-  //     final options = vm.RobotClientOptions.withApiKey(
-  //         "829d43b8-878d-4fd7-bf46-678e1badc434",
-  //         "kkbo65gpvucc5rhtmw37sw8imn431hcn");
+  void _startConnectionStatusTimer() {
+    // Check connection status every second
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _socksForwarderConnected = isSocksForwarderConnected;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
 
-  //     robot = await vm.RobotClient.atAddress(
-  //         'juliespi-main.myj4cbg09b.viam.cloud', options);
-
-  //     final mySensor = vm.Sensor.fromRobot(robot!, 'sensor-1');
-  //     final readings = await mySensor.readings();
-
-  //     setState(() {
-  //       _sensorData = readings.toString();
-  //     });
-
-  //     logger.i("Successfully connected to robot.");
-  //   } catch (e) {
-  //     setState(() {
-  //       _sensorData = "Failed to connect: $e";
-  //     });
-
-  //     logger.e("Error connecting to robot: $e");
-  //   }
-  // }
   Future<void> connectToViam() async {
     const host = 'juliespi-main.myj4cbg09b.viam.cloud';
     const apiKeyID = '829d43b8-878d-4fd7-bf46-678e1badc434';
@@ -84,7 +77,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _getSensorReadings() async {
-    // await Future<void>.delayed(const Duration(seconds: 1));
     print("might be getting sensor readings");
     print("robot null? ${robot == null}");
     if (robot == null) return;
@@ -126,6 +118,13 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            ElevatedButton(
+                onPressed: connectToViam,
+                child: const Text('Reconnect to viam')),
+            const SizedBox(height: 40),
+            if (!_socksForwarderConnected)
+              const Text(
+                  'Connection failed - you may be too far away from machine'),
             ElevatedButton(
                 onPressed: _getSensorReadings,
                 child: const Text('Get Sensor Readings')),
@@ -193,9 +192,9 @@ void main() {
 }
 
 void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
+  isSocksForwarderConnected = false;
   runZonedGuarded(
     () {
-      // requestBluetoothPermissions().then((_) {
       Permission.bluetoothConnect
           .request()
           .then((status) => Permission.bluetoothAdvertise.request())
@@ -298,6 +297,7 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   chanStream.listen((chan) async {
     final thisCount = chanCount++;
     logger.i('BLE-SOCKS bridge established and ready to handle traffic');
+    isSocksForwarderConnected = true;
     final socksServerProxy = SocksServer();
     socksServerProxy.connections.listen((connection) async {
       logger.i(
@@ -305,6 +305,7 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
       await connection.forward(allowIPv6: true);
     }).onError((error) {
       logger.e('error listening for connections: $error');
+      isSocksForwarderConnected = false;
     });
 
     unawaited(socksServerProxy
