@@ -84,6 +84,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _getSensorReadings() async {
+    // await Future<void>.delayed(const Duration(seconds: 1));
     print("might be getting sensor readings");
     print("robot null? ${robot == null}");
     if (robot == null) return;
@@ -101,6 +102,7 @@ class _MyHomePageState extends State<MyHomePage> {
     } catch (e) {
       setState(() {
         _sensorData = "Error getting sensor data: $e";
+        print("Error getting sensor data: $e");
       });
 
       logger.e("Error fetching sensor data: $e");
