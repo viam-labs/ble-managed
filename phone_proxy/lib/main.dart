@@ -132,7 +132,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void logCallback(OutputEvent event) {
-    if (display.length + event.lines.length > 20) {
+    if (display.length + event.lines.length > 15) {
       display = display.sublist(event.lines.length);
     }
     display.addAll(event.lines);
@@ -379,7 +379,8 @@ class SpeedTestSocket {
   }
   Future<void> _speedTest() async {
     await _uploadTest();
-    // await _write();
+    sleep(const Duration(seconds: 2));
+    await _downloadTest();
   }
 
   // The structure here should match the corresponding upload_test in the socks
@@ -387,7 +388,7 @@ class SpeedTestSocket {
   Future<void> _uploadTest() async {
     try {
       const bytesPerTest = 200000;
-      const numTests = 5;
+      const numTests = 2;
 
       double totalReceived = 0;
       double totalElapsed = 0;
@@ -396,9 +397,9 @@ class SpeedTestSocket {
         var read = 0;
         Stopwatch stopwatch = Stopwatch()..start();
         while (read < bytesPerTest) {
-          // using 5000 because that seems to average the highest speed.
+          // using 25000 because that seems to average the highest speed.
           // feel free to increase or decrease this.
-          final data = await _channel.read(5000);
+          final data = await _channel.read(25000);
           if (data == null) {
             return;
           }
@@ -432,16 +433,56 @@ class SpeedTestSocket {
     }
   }
 
-  Future<void> _write() async {
-    // try {
-    //   await for (final data in ioSinkController.stream) {
-    //     if (_completer.isCompleted) {
-    //       return;
-    //     }
-    //     await _channel.write(Uint8List.fromList(data));
-    //   }
-    // } catch (err) {
-    //   debugPrint('error writing to l2cap channel: $err');
-    // }
+  // The structure here should match the corresponding download_test in the socks
+  // forwarder speed test.
+  Future<void> _downloadTest() async {
+    try {
+      const bytesPerTest = 200000;
+      const numTests = 5;
+
+      double totalSent = 0;
+      double totalElapsed = 0;
+      // wait for a handshake before starting.
+      await _channel.write(Uint8List.fromList([0]));
+      await _channel.read(1);
+      _logger.i("starting download speed test!");
+      for (var testNum = 1; testNum <= numTests; testNum++) {
+        var write = 0;
+        var msgNum = 0;
+        Stopwatch stopwatch = Stopwatch()..start();
+        while (write < bytesPerTest) {
+          // using 25000 because that seems to average the highest speed.
+          // feel free to increase or decrease this.
+          final data = List<int>.filled(25000, msgNum);
+          // Android writes return immediately with a -1, so the number returned
+          // is not useful.
+          await _channel.write(Uint8List.fromList(data));
+          write += data.length;
+          msgNum++;
+        }
+        // wait for a response from the other side
+        stopwatch.stop();
+        var mbSent = write / 1000000;
+        var elapsedTime = stopwatch.elapsedMilliseconds / 1000;
+        var mBytesPS = mbSent / elapsedTime;
+        var mBitsPS = 8 * mBytesPS;
+        _logger.i('Test #$testNum of $numTests');
+        _logger.i('\tData sent: ${mbSent.toStringAsFixed(3)} megabytes');
+        _logger.i('\tTime elapsed: ${elapsedTime.toStringAsFixed(3)} sec');
+        _logger.i(
+            '\tDownload Speed: ${mBytesPS.toStringAsFixed(3)} megabtyes/s (${mBitsPS.toStringAsFixed(3)} megabits/s)');
+        totalSent += mbSent;
+        totalElapsed += elapsedTime;
+      }
+      var avgMBytesPS = totalSent / totalElapsed;
+      var avgMBitsPS = 8 * avgMBytesPS;
+      _logger.i('Download Speed Test Summary');
+      _logger.i('\tTotal sent: ${totalSent.toStringAsFixed(3)} megabytes');
+      _logger.i('\tTotal elapsed: ${totalElapsed.toStringAsFixed(3)} sec');
+      _logger.i(
+          '\tAvg Download Speed: ${avgMBytesPS.toStringAsFixed(3)} megabtyes/s (${avgMBitsPS.toStringAsFixed(3)} megabits/s)');
+    } catch (err) {
+      debugPrint('error writing to l2cap channel: $err');
+    }
   }
 }
