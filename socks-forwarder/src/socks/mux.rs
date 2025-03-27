@@ -416,9 +416,6 @@ impl L2CAPStreamMux {
             let mut total = 0;
             let start = Instant::now();
             loop {
-                // for whatever reason, 29000 bytes seems to be the largest number that works reliably on test device (Pixel 7 on Android 15).
-                // using 25000 because that seems to average the highest speed.
-                // feel free to increase or decrease this. 
                 let mut chunk_buf = vec![0u8; RECV_MTU as usize];
                 let n = match l2cap_stream_read.read(&mut chunk_buf).await {
                     Ok(n) if n > 0 => n,
