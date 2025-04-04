@@ -152,12 +152,12 @@ pub async fn find_device_and_psm(
                                     if characteristic.flags().await?.read {
                                         debug!("Reading characteristic value");
                                         let value = characteristic.read().await?;
-                                        let proxy_name = String::from_utf8_lossy(&value);
-                                        if proxy_name == device_name {
+                                        let found_device_name = String::from_utf8_lossy(&value);
+                                        if found_device_name == device_name {
                                             found_name = true;
                                             break;
                                         }
-                                        debug!("Read str: {:x?}", &proxy_name);
+                                        debug!("Read str: {:x?}", &found_device_name);
                                     }
                                 }
                             }

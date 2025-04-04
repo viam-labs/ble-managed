@@ -10,17 +10,17 @@ use tokio::net::TcpListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::time::{self, timeout, Duration};
 
-/// The port on which to start the SOCKS proxy.
+/// The port on which to start the listening for traffic to forward.
 const PORT: u16 = 1080;
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
 const RECV_MTU: u16 = 65535;
 
-/// Starts a SOCKS proxy that accepts incoming SOCKS requests and forwards them over streams
+/// Starts a forwarder that accepts incoming requests and forwards them over an L2CAP stream
 /// created against the `device` on `psm`. Returns true if main program should go back to
-/// `find_viam_proxy_device_and_psm` and false otherwise (only returns false when a SIGTERM or
+/// `find_viam_mobile_device_and_psm` and false otherwise (only returns false when a SIGTERM or
 /// SIGINT is received.)
-pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
+pub async fn start_forwarder(device: bluer::Device, psm: u16) -> Result<bool> {
     let bind_address = format!("127.0.0.1:{PORT}");
     let listener = TcpListener::bind(bind_address.clone()).await?;
 
@@ -64,7 +64,7 @@ pub async fn start_proxy(device: bluer::Device, psm: u16) -> Result<bool> {
     debug!("Sleeping for a couple seconds to potentially allow manual disconnect");
     time::sleep(Duration::from_secs(2)).await;
 
-    // Disconnect device if still connected after proxy is done running.
+    // Disconnect device if still connected after forwarder is done running.
     if device.is_connected().await? {
         let disconnect_future = device.disconnect();
         let disconnect_timeout = Duration::from_secs(5);

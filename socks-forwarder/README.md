@@ -56,7 +56,7 @@ sudo hciconfig hci0 reset
 sudo systemctl restart bluetooth
 ```
 
-* Make sure `bluetoothctl` is _not_ open during proxy operation since this can
+* Make sure `bluetoothctl` is _not_ open during socks-forwarder operation since this can
   mess with the rust based agent.
 
 * Phone stuck in connecting even though it looks like the devices are

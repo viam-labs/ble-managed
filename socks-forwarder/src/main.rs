@@ -39,7 +39,7 @@ async fn return_hardcoded_passkey() -> ReqResult<u32> {
 /// written. Once a name is written, scans for another BLE device with that mobile device name and
 /// a corresponding Viam service UUID and PSM characteristic. It then returns the device, the
 /// discovered PSM, and the agent handle.
-async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHandle)> {
+async fn find_viam_mobile_device_and_psm() -> Result<(bluer::Device, u16, AgentHandle)> {
     // Get the machine part id from `/etc/viam.json` and retry upon failure. A non-existent or
     // corrupted `/etc/viam.json` likely means the machine has not yet been provisioned. There
     // will be no traffic to forward until the device is provisioned.
@@ -135,10 +135,10 @@ async fn main() -> Result<()> {
 
     loop {
         tokio::select! {
-            find_result = find_viam_proxy_device_and_psm() => {
+            find_result = find_viam_mobile_device_and_psm() => {
                 match find_result {
                     Ok((device, psm, handle)) => {
-                        if socks::start_proxy(device, psm).await? {
+                        if socks::start_forwarder(device, psm).await? {
                             continue;
                         }
 
