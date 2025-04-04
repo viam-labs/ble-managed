@@ -58,19 +58,29 @@ async fn find_viam_mobile_device_and_psm() -> Result<(bluer::Device, u16, AgentH
     debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
-    debug!("Registering custom agent to force JustWorks key-generation");
-    // Configure bluer agent to give us "NoInputNoOutput" capabilities. That should _force_ a "Just
-    // Works" keygeneration method. The bluer crate registers "NoInputNoOutput" capabilities when
-    // we explicitly use `None` for all of the capability fields.
+    debug!("Registering custom agent");
+    // Configure bluer agent to give us "DisplayYesNo" capabilities. We cannot use
+    // "NoInputNoOutput" as we _must_ have an `authorize_service` callback to allow the usage of
+    // L2Cap streams. Using "DisplayYesNo" requires us to specify "auto-accepters" for
+    // authorization and confirmation requests, too.
     let agent = Agent {
         request_default: true, // we want default
         request_passkey: None,
         request_pin_code: None,
         display_passkey: None,
         display_pin_code: None,
-        request_confirmation: None,
-        request_authorization: None,
-        authorize_service: Some(Box::new(|_| return_ok().boxed())), // allow L2CAP connections
+        request_authorization: Some(Box::new(move |req| {
+            debug!("Auto-accepting pair from device {}", req.device);
+            return_ok().boxed()
+        })),
+        request_confirmation: Some(Box::new(move |req| {
+            debug!("Auto-confirming passkey {}", req.passkey);
+            return_ok().boxed()
+        })),
+        authorize_service: Some(Box::new(move |req| {
+            debug!("Auto-authorizing use of service {}", req.service);
+            return_ok().boxed()
+        })),
         ..Default::default()
     };
     let handle = session.register_agent(agent).await?;
