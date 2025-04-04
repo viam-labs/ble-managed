@@ -19,18 +19,18 @@ use uuid::Uuid;
 ///
 /// - with adapter `adapter`
 /// - with a service IDed as `svc_uuid`
-/// - with a read characteristic IDed as `managed_machine_name_char_uuid` with `device_name`
-/// - with a write characteristic IDed as `socks_proxy_name_char_uuid`
+/// - with a read characteristic IDed as `machine_part_id_char_uuid` with `machine_part_id`
+/// - with a write characteristic IDed as `mobile_device_name_char_uuid`
 ///
 /// Waits for a BLE central to write a UTF8-encoded string to that characteristic and returns the
-/// written value (or an error).
-pub async fn advertise_and_find_proxy_device_name(
+/// written value (or an error.)
+pub async fn advertise_and_find_mobile_device_name(
     adapter: &Adapter,
-    device_name: String,
+    machine_part_id: String,
     advertised_ble_name: String,
     svc_uuid: Uuid,
-    managed_name_char_uuid: Uuid,
-    proxy_name_char_uuid: Uuid,
+    machine_part_id_uuid: Uuid,
+    mobile_device_name_char_uuid: Uuid,
 ) -> Result<String> {
     let le_advertisement = Advertisement {
         advertisement_type: bluer::adv::Type::Peripheral,
@@ -44,7 +44,7 @@ pub async fn advertise_and_find_proxy_device_name(
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);
     info!("Registered advertisement");
 
-    let device_name_copy = device_name.clone();
+    let machine_part_id_copy = machine_part_id.clone();
     let (char_control, char_handle) = characteristic_control();
     let app = Application {
         services: vec![Service {
@@ -52,7 +52,7 @@ pub async fn advertise_and_find_proxy_device_name(
             primary: true,
             characteristics: vec![
                 Characteristic {
-                    uuid: managed_name_char_uuid,
+                    uuid: machine_part_id_uuid,
                     read: Some(CharacteristicRead {
                         read: true,
                         // this is public info
@@ -60,7 +60,7 @@ pub async fn advertise_and_find_proxy_device_name(
                         encrypt_authenticated_read: false,
                         secure_read: false,
                         fun: Box::new(move |_| {
-                            let device_name_clone = device_name_copy.clone();
+                            let device_name_clone = machine_part_id_copy.clone();
                             async move { Ok(device_name_clone.as_bytes().to_vec()) }.boxed()
                         }),
                         ..Default::default()
@@ -68,7 +68,7 @@ pub async fn advertise_and_find_proxy_device_name(
                     ..Default::default()
                 },
                 Characteristic {
-                    uuid: proxy_name_char_uuid,
+                    uuid: mobile_device_name_char_uuid,
                     write: Some(CharacteristicWrite {
                         write: true,
                         encrypt_write: false,
@@ -87,9 +87,10 @@ pub async fn advertise_and_find_proxy_device_name(
     };
     let _app_handle = Some(adapter.serve_gatt_application(app).await?);
 
-    info!("Advertising proxy device name char to be written to. Local device name: {device_name}");
+    info!("Advertising mobile device name char to be written to");
+    info!("Local machine part ID is: {machine_part_id}");
+    info!("In healthy and idle state. Waiting for mobile device name to be written");
 
-    info!("In healthy and idle state. Waiting for proxy device name to be written");
     pin_mut!(char_control);
 
     loop {
@@ -104,7 +105,7 @@ pub async fn advertise_and_find_proxy_device_name(
                 let num_bytes = reader.read(&mut read_buf).await?;
                 let trimmed_read_buf = &read_buf[0..num_bytes];
                 match from_utf8(trimmed_read_buf) {
-                    Ok(proxy_device_name_str) => {
+                    Ok(mobile_device_name_str) => {
                         // Attempt to pair with the device that wrote its name to our characteristic.
                         let device = adapter.device(device_addr)?;
                         if !device.is_paired().await? {
@@ -120,11 +121,11 @@ pub async fn advertise_and_find_proxy_device_name(
                             device.set_trusted(true).await?;
                         }
 
-                        return Ok(proxy_device_name_str.to_string());
+                        return Ok(mobile_device_name_str.to_string());
                     }
                     Err(e) => {
                         return Err(anyhow!(
-                            "written proxy device name is not a UT8-encoded string: {e}"
+                            "written mobile device name is not a UT8-encoded string: {e}"
                         ));
                     }
                 }
@@ -139,5 +140,5 @@ pub async fn advertise_and_find_proxy_device_name(
         }
     }
 
-    Err(anyhow!("failed to collect a proxy device name"))
+    Err(anyhow!("failed to collect a mobile device name"))
 }

@@ -15,12 +15,15 @@ use tokio::time::sleep;
 /// - with adapter `adapter`
 /// - named `device_name`
 /// - with a service IDed as `svc_uuuid`
+/// - with a characteristic IDed as `mobile_device_name_char_uuid`
 /// - with a characteristic IDed as `psm_char_uuid`
+///
+/// Returns a handle to that device and the PSM it's advertising.
 pub async fn find_device_and_psm(
     adapter: &bluer::Adapter,
     device_name: String,
     svc_uuid: uuid::Uuid,
-    proxy_name_char_uuid: uuid::Uuid,
+    mobile_device_name_char_uuid: uuid::Uuid,
     psm_char_uuid: uuid::Uuid,
 ) -> Result<(Device, u16)> {
     info!(
@@ -62,9 +65,7 @@ pub async fn find_device_and_psm(
                     _ => {}
                 }
 
-                // Device should be paired and trusted by this point. `DeviceAdded`, it seems,
-                // indicates there was a new pair. It's possible the connection was lost, so try to
-                // reconnect if so.
+                // It's possible the connection was lost, so try to reconnect if so.
                 if !device.is_connected().await? {
                     info!("Device {remote_addr} not connected to; reconnecting now");
                     device.connect().await?;
@@ -146,17 +147,17 @@ pub async fn find_device_and_psm(
                             for characteristic in service.characteristics().await? {
                                 let uuid = characteristic.uuid().await?;
                                 debug!("Characteristic UUID: {}", &uuid);
-                                if uuid == proxy_name_char_uuid {
+                                if uuid == mobile_device_name_char_uuid {
                                     info!("Found name characteristic");
                                     if characteristic.flags().await?.read {
                                         debug!("Reading characteristic value");
                                         let value = characteristic.read().await?;
-                                        let proxy_name = String::from_utf8_lossy(&value);
-                                        if proxy_name == device_name {
+                                        let found_device_name = String::from_utf8_lossy(&value);
+                                        if found_device_name == device_name {
                                             found_name = true;
                                             break;
                                         }
-                                        debug!("Read str: {:x?}", &proxy_name);
+                                        debug!("Read str: {:x?}", &found_device_name);
                                     }
                                 }
                             }
@@ -196,5 +197,7 @@ pub async fn find_device_and_psm(
             _ => (), // Ignore all events beyond AddedDevice.
         }
     }
-    Err(anyhow!("service and characteristic combination not found"))
+    Err(anyhow!(
+        "Desired service and characteristic combination not found"
+    ))
 }

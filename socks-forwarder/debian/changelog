@@ -1,3 +1,10 @@
+socks-forwarder (0.6) viam; urgency=medium
+
+  * Do not crash on inability to parse /etc/viam.json.
+  * Use "forwarder" instead of "proxy" language
+
+ -- Benji Rewis <benji.rewis@viam.com>  Fri, 04 Apr 2025 16:32:51 +0000
+
 socks-forwarder (0.5) viam; urgency=medium
 
   * Log BLE adapter information upon startup

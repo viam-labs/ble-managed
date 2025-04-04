@@ -70,6 +70,7 @@ unlinked_spec.ds
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
+**/android/app/.cxx/
 *.jks
 
 # iOS/XCode related
@@ -144,4 +145,4 @@ main
 *.ddeb
 socks-forwarder/debian/socks-forwarder
 socks-forwarder/debian/socks-forwarder.*
-socks-forwarder-dbgsym_0.5_arm64.deb
+socks-forwarder-dbgsym_0.6_arm64.deb

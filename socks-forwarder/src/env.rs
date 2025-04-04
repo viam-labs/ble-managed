@@ -28,8 +28,8 @@ struct Cloud {
     id: String,
 }
 
-/// Finds managed device name from `VIAM_CONFIG_FILE`'s `id` field.
-pub async fn get_managed_device_name() -> Result<String> {
+/// Finds machine part ID from `VIAM_CONFIG_FILE`'s `id` field.
+pub async fn get_machine_part_id() -> Result<String> {
     let viam_config_file = match File::open(Path::new(VIAM_CONFIG_FP)) {
         Ok(file) => file,
         _ => {
