@@ -1,4 +1,4 @@
-//! Runs the Viam grill proxy.
+//! The Viam socks-forwarder process (runs as a systemd service.)
 
 mod central;
 mod env;
@@ -12,17 +12,16 @@ use log::{debug, info, warn};
 use tokio::signal::unix::{signal, SignalKind};
 use uuid::uuid;
 
-/// Service UUID for advertised local proxy device name characteristic and remote PSM
-/// characteristic.
+/// BLE service UUID for all Viam characteristics (local and remote.)
 const VIAM_SERVICE_UUID: uuid::Uuid = uuid!("79cf4eca-116a-4ded-8426-fb83e53bc1d7");
 
-/// Characteristic UUID for our device name (us as a peripheral).
-const MANAGED_MACHINE_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-59883a0049d7");
+/// BLE characteristic UUID to advertise the local machine part ID on.
+const MACHINE_PART_ID_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-59883a0049d7");
 
-/// Characteristic UUID for their device name (the proxy as a central).
-const SOCKS_PROXY_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-59883a0049d8");
+/// BLE characteristic UUID to receive mobile device names on.
+const MOBILE_DEVICE_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-59883a0049d8");
 
-/// Characteristic UUID for remote PSM.
+/// BLE characteristic UUID for the remote PSM (seen by us as a central.)
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
 
 /// Utility function to return ok from box.
@@ -30,20 +29,41 @@ async fn return_ok() -> ReqResult<()> {
     Ok(())
 }
 
-/// Utility function to return hardcoded passkey from box.
+/// Utility function to return a hardcoded passkey from box.
 async fn return_hardcoded_passkey() -> ReqResult<u32> {
     Ok(123456)
 }
 
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
-/// name of this device can be read, and one to which the proxy device name can be be written. Once
-/// a name is written, scans for another BLE device with that proxy device name and a corresponding
-/// Viam service UUID and PSM characteristic. It then returns the device, the discoverd PSM, and
-/// the agent handle.
+/// machine part id of this device can be read, and one to which a mobile device name can be be
+/// written. Once a name is written, scans for another BLE device with that mobile device name and
+/// a corresponding Viam service UUID and PSM characteristic. It then returns the device, the
+/// discovered PSM, and the agent handle.
 async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHandle)> {
+    // Get the machine part id from `/etc/viam.json` and retry upon failure. A non-existent or
+    // corrupted `/etc/viam.json` likely means the machine has not yet been provisioned. There
+    // will be no traffic to forward until the device is provisioned.
+    let mut logged_no_machine_part_id_warning = false;
+    let machine_part_id = loop {
+        match env::get_machine_part_id().await {
+            Ok(name) => break name,
+            Err(e) => {
+                if !logged_no_machine_part_id_warning {
+                    warn!("{e}");
+                    warn!("SOCKS forwarder not functional until machine part ID can be fetched");
+                    logged_no_machine_part_id_warning = true;
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    };
+    info!("Machine part ID fetched from `/etc/viam.json`: {machine_part_id}");
+
     debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
+    debug!("Registering custom agent");
     let agent = Agent {
         request_default: true,
         request_pin_code: None,
@@ -73,37 +93,32 @@ async fn find_viam_proxy_device_and_psm() -> Result<(bluer::Device, u16, AgentHa
     }
     log_adapter_info(&adapter).await?;
 
-    // Use `unwrap` here to cause a fatal error in the event on inability to get the managed device
-    // name from `/etc/viam.json`. There is no default value for this, and the user has likely
-    // removed or edited `/etc/viam.json`.
-    let managed_device_name = env::get_managed_device_name().await.unwrap();
-
     let advertised_ble_name = env::get_advertised_ble_name().await?;
     // This alias is what shows up in pairing requests.
     adapter.set_alias(advertised_ble_name.clone()).await?;
 
-    info!("Advertising self='{advertised_ble_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{SOCKS_PROXY_NAME_CHAR_UUID}'");
-    let proxy_device_name = peripheral::advertise_and_find_proxy_device_name(
+    info!("Advertising self='{advertised_ble_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{MOBILE_DEVICE_NAME_CHAR_UUID}'");
+    let mobile_device_name = peripheral::advertise_and_find_mobile_device_name(
         &adapter,
-        managed_device_name,
+        machine_part_id,
         advertised_ble_name,
         VIAM_SERVICE_UUID,
-        MANAGED_MACHINE_NAME_CHAR_UUID,
-        SOCKS_PROXY_NAME_CHAR_UUID,
+        MACHINE_PART_ID_CHAR_UUID,
+        MOBILE_DEVICE_NAME_CHAR_UUID,
     )
     .await?;
-    info!("Proxy device is '{proxy_device_name}'");
+    info!("Mobile device name is '{mobile_device_name}'");
 
     let (device, psm) = central::find_device_and_psm(
         &adapter,
-        proxy_device_name,
+        mobile_device_name,
         VIAM_SERVICE_UUID,
-        SOCKS_PROXY_NAME_CHAR_UUID,
+        MOBILE_DEVICE_NAME_CHAR_UUID,
         PSM_CHARACTERISTIC_UUID,
     )
     .await?;
     info!(
-        "Found device='{}' that is waiting for l2cap connections on psm='{psm}'; connecting",
+        "Found device at address '{}' that is waiting for l2cap connections on psm '{psm}'; connecting",
         device.remote_address().await?
     );
 
