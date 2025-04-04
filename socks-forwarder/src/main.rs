@@ -6,7 +6,8 @@ mod peripheral;
 mod socks;
 
 use anyhow::Result;
-use bluer::agent::{Agent, AgentHandle};
+use bluer::agent::{Agent, AgentHandle, ReqResult};
+use futures::FutureExt;
 use log::{debug, info, warn};
 use tokio::signal::unix::{signal, SignalKind};
 use uuid::uuid;
@@ -22,6 +23,11 @@ const MOBILE_DEVICE_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-
 
 /// BLE characteristic UUID for the remote PSM (seen by us as a central.)
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
+
+/// Utility function to return ok from box.
+async fn return_ok() -> ReqResult<()> {
+    Ok(())
+}
 
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
 /// machine part id of this device can be read, and one to which a mobile device name can be be
@@ -57,13 +63,14 @@ async fn find_viam_mobile_device_and_psm() -> Result<(bluer::Device, u16, AgentH
     // Works" keygeneration method. The bluer crate registers "NoInputNoOutput" capabilities when
     // we explicitly use `None` for all of the capability fields.
     let agent = Agent {
+        request_default: true, // we want default
         request_passkey: None,
         request_pin_code: None,
         display_passkey: None,
         display_pin_code: None,
         request_confirmation: None,
         request_authorization: None,
-        authorize_service: None,
+        authorize_service: Some(Box::new(|_| return_ok().boxed())), // allow L2CAP connections
         ..Default::default()
     };
     let handle = session.register_agent(agent).await?;
