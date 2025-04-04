@@ -6,8 +6,7 @@ mod peripheral;
 mod socks;
 
 use anyhow::Result;
-use bluer::agent::{Agent, AgentHandle, ReqResult};
-use futures::FutureExt;
+use bluer::agent::{Agent, AgentHandle};
 use log::{debug, info, warn};
 use tokio::signal::unix::{signal, SignalKind};
 use uuid::uuid;
@@ -23,16 +22,6 @@ const MOBILE_DEVICE_NAME_CHAR_UUID: uuid::Uuid = uuid!("918ce61c-199f-419e-b6d5-
 
 /// BLE characteristic UUID for the remote PSM (seen by us as a central.)
 const PSM_CHARACTERISTIC_UUID: uuid::Uuid = uuid!("ab76ead2-b6e6-4f12-a053-61cd0eed19f9");
-
-/// Utility function to return ok from box.
-async fn return_ok() -> ReqResult<()> {
-    Ok(())
-}
-
-/// Utility function to return a hardcoded passkey from box.
-async fn return_hardcoded_passkey() -> ReqResult<u32> {
-    Ok(123456)
-}
 
 /// Advertises a BLE device with the Viam service UUID and two characteristics: one from which the
 /// machine part id of this device can be read, and one to which a mobile device name can be be
@@ -63,25 +52,18 @@ async fn find_viam_mobile_device_and_psm() -> Result<(bluer::Device, u16, AgentH
     debug!("Getting bluer session");
     let session = bluer::Session::new().await?;
 
-    debug!("Registering custom agent");
+    debug!("Registering custom agent to force JustWorks key-generation");
+    // Configure bluer agent to give us "NoInputNoOutput" capabilities. That should _force_ a "Just
+    // Works" keygeneration method. The bluer crate registers "NoInputNoOutput" capabilities when
+    // we explicitly use `None` for all of the capability fields.
     let agent = Agent {
-        request_default: true,
+        request_passkey: None,
         request_pin_code: None,
-        display_pin_code: None,
-        request_passkey: Some(Box::new(move |_req| {
-            debug!("auto generating passkey 123456");
-            return_hardcoded_passkey().boxed()
-        })),
         display_passkey: None,
-        request_confirmation: Some(Box::new(move |req| {
-            debug!("auto confirming passkey {}", req.passkey);
-            return_ok().boxed()
-        })),
-        request_authorization: Some(Box::new(|_| {
-            debug!("auto accepting pair");
-            return_ok().boxed()
-        })),
-        authorize_service: Some(Box::new(|_| return_ok().boxed())),
+        display_pin_code: None,
+        request_confirmation: None,
+        request_authorization: None,
+        authorize_service: None,
         ..Default::default()
     };
     let handle = session.register_agent(agent).await?;
