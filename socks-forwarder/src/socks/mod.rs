@@ -99,13 +99,6 @@ pub async fn connect_l2cap(device: &bluer::Device, psm: u16) -> Result<l2cap::St
     debug!("Binding socket");
     stream.bind(l2cap::SocketAddr::any_le())?;
 
-    debug!("Setting security level to high");
-    let security = l2cap::Security {
-        level: l2cap::SecurityLevel::High,
-        key_size: 16,
-    };
-    stream.set_security(security)?;
-
     info!("Connecting to L2CAP CoC at {:?}", &target_sa);
     stream
         .connect(target_sa)
