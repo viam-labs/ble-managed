@@ -84,7 +84,7 @@ void main() {
   // reinvocation of the `mainLoop` method below. You may want to use
   // a `Completer` flutter object to cancel or restart the current `mainLoop`
   // if this behavior is desired.
-  var machineToManage = 'TODO';
+  var machineToManage = '688052c7-c3c1-4f69-ae2e-d6990c719290';
 
   mainLoop(mobileDevice, machineToManage, true);
 }
