@@ -27,7 +27,8 @@ pub async fn start_forwarder(device: bluer::Device, psm: u16) -> Result<bool> {
     let l2cap_stream = match connect_l2cap(&device, psm).await {
         Ok(stream) => stream,
         Err(e) => {
-            return Err(anyhow!("Error creating L2CAP stream: {e}"));
+            error!("could not create L2CAP stream: {e}");
+            return Ok(true); // restart
         }
     };
     let mut mux = mux::L2CAPStreamMux::create_and_start(l2cap_stream);

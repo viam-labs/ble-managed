@@ -7,6 +7,7 @@ Requires=bluetooth.service
 ExecStart=/usr/bin/socks-forwarder
 Environment="SOCKS_PROXY=localhost:1080"
 Environment="RUST_LOG=debug"
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
