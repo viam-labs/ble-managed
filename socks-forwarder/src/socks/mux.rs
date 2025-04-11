@@ -236,7 +236,7 @@ impl L2CAPStreamMux {
                     Err(e) => {
                         // Inability to deserialize a packet indicates degradation or disconnection
                         // of the L2CAP connection; send to stop_due_to_disconnect channel.
-                        warn!("Error deserializing packet; dropping data packet: {e}");
+                        warn!("Error deserializing packet; assuming disconnect occurred: {e}");
                         if let Err(e) = stop_due_to_disconnect_send.send(true).await {
                             error!("Error sending to 'stop_due_to_disconnect' channel: {e}");
                         }
