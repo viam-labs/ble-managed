@@ -27,7 +27,6 @@ use uuid::Uuid;
 pub async fn advertise_and_find_mobile_device_name(
     adapter: &Adapter,
     machine_part_id: String,
-    advertised_ble_name: String,
     svc_uuid: Uuid,
     machine_part_id_uuid: Uuid,
     mobile_device_name_char_uuid: Uuid,
@@ -38,7 +37,6 @@ pub async fn advertise_and_find_mobile_device_name(
         discoverable: Some(true),
         min_interval: Some(Duration::from_millis(20)),
         max_interval: Some(Duration::from_millis(100)),
-        local_name: Some(advertised_ble_name),
         ..Default::default()
     };
     let _adv_handle = Some(adapter.advertise(le_advertisement).await?);

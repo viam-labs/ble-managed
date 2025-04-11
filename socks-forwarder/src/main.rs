@@ -93,15 +93,10 @@ async fn find_viam_mobile_device_and_psm() -> Result<(bluer::Device, u16, AgentH
     }
     log_adapter_info(&adapter).await?;
 
-    let advertised_ble_name = env::get_advertised_ble_name().await?;
-    // This alias is what shows up in pairing requests.
-    adapter.set_alias(advertised_ble_name.clone()).await?;
-
-    info!("Advertising self='{advertised_ble_name}' on service='{VIAM_SERVICE_UUID}' characteristic='{MOBILE_DEVICE_NAME_CHAR_UUID}'");
+    info!("Will wait for write on characteristic='{MOBILE_DEVICE_NAME_CHAR_UUID}' on service='{VIAM_SERVICE_UUID}'");
     let mobile_device_name = peripheral::advertise_and_find_mobile_device_name(
         &adapter,
         machine_part_id,
-        advertised_ble_name,
         VIAM_SERVICE_UUID,
         MACHINE_PART_ID_CHAR_UUID,
         MOBILE_DEVICE_NAME_CHAR_UUID,
