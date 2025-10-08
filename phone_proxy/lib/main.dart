@@ -114,7 +114,7 @@ void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
 
 /* No need to mutate code beneath this line. */
 
-var logger = Logger(printer: SimplePrinter(colors: false));
+var logger = Logger(printer: SimplePrinter(colors: false, printTime: true));
 
 // Hardcoded Viam BLE UUIDs known by both this code and SOCKS forwarder code.
 const viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
