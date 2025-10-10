@@ -41,6 +41,8 @@ sudo apt install python3-docutils
 echo "Installing git (likely already installed)..."
 sudo apt install git
 
+set -e
+
 echo "Cloning bluez..."
 pushd ~
 git clone https://github.com/bluez/bluez.git
