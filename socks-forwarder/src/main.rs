@@ -138,12 +138,18 @@ async fn main() -> Result<()> {
             find_result = find_viam_mobile_device_and_psm() => {
                 match find_result {
                     Ok((device, psm, handle)) => {
-                        if socks::start_forwarder(device, psm).await? {
-                            continue;
+                        match socks::start_forwarder(device, psm).await {
+                            Ok(true) => {
+                                continue
+                            }
+                            Ok(false) => {
+                                drop(handle);
+                                break;
+                            }
+                            Err(e) => {
+                                warn!("Error starting SOCKS forwarder: {e}; restarting the SOCKS forwarder");
+                            }
                         }
-
-                        drop(handle);
-                        break;
                     },
                     Err(e) => {
                         warn!("Error while scanning for mobile device: {e}; restarting the SOCKS forwarder");
