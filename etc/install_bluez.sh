@@ -40,7 +40,7 @@ sudo apt install python3-docutils
 
 echo "Installing git (likely already installed)..."
 sudo apt install git
-
+echo "Installing libbluetooth-dev..."
 sudo apt install libbluetooth-dev
 
 echo "Cloning bluez..."
