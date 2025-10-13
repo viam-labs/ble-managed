@@ -288,7 +288,7 @@ Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineTo
             .timeout(const Duration(seconds: 45), onTimeout: () {
           try {
             logger.i('connection establishment timeout, disconnecting periph before retrying...');
-            periph.disconnect();
+            await periph.disconnect();
           } catch (error) {
             logger.w('failed to disconnect $periph before retrying: $error');
           }
