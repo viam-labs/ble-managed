@@ -8,6 +8,10 @@ setup:
 	sudo apt install libdbus-1-dev
 	# Fakeroot is needed to call dpkg commands without sudo.
 	sudo apt install fakeroot
+	# dpkg is needed to create deb files.
+	sudo apt install dpkg
+	# devscripts is needed to update debian changelogs.
+	sudo apt install devscripts
 	# Rust, cargo and bluez (>= 0.5.60) must also be installed.
 
 build:
