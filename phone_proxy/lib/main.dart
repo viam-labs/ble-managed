@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -128,6 +129,11 @@ const numRetries = 3;
 
 var bridgeEstablished = false;
 
+// Stores BD address -> last tried timestamp
+final Map<String, DateTime> lastTried = HashMap();
+// Don't retry same device within this time
+const trySeconds = 5;
+
 void startBLESocksPhoneProxy(String mobileDevice, machineToManage) {
   WidgetsFlutterBinding.ensureInitialized();
   Permission.bluetoothConnect
@@ -200,8 +206,14 @@ Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineTo
   late StreamSubscription<DiscoveredBlePeripheral> deviceSub;
   deviceSub = bleCentral.scanForPeripherals([viamSvcUUID]).listen(
     (periphInfo) {
+      var lastTriedTime = lastTried[periphInfo.id];
+      if (lastTriedTime != null && DateTime.now().difference(lastTriedTime).inSeconds < trySeconds) {
+        logger.i('found ${periphInfo.name} (${periphInfo.id}), but tried within last $trySeconds seconds; skipping for now');
+        return;
+      }
       deviceSub.pause();
-      logger.i('found ${periphInfo.name}; connecting');
+      logger.i('found ${periphInfo.name} (${periphInfo.id}); connecting');
+      lastTried[periphInfo.id] = DateTime.now();
       bleCentral.connectToPeripheral(periphInfo.id).then((periph) async {
         logger.i('connected to $machineToManage');
 
