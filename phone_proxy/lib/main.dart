@@ -104,6 +104,7 @@ void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
         // grill.
 
         logger.w('disconnection detected; restarting pairing process');
+        bridgeEstablished = false;
         // Restart zone but don't call runApp to avoid zone mismatch.
         mainLoop(mobileDevice, machineToManage, false);
       } else {
@@ -115,7 +116,7 @@ void mainLoop(String mobileDevice, machineToManage, bool shouldCallRunApp) {
 
 /* No need to mutate code beneath this line. */
 
-var logger = Logger(printer: SimplePrinter(colors: false));
+var logger = Logger(printer: SimplePrinter(colors: false, printTime: true));
 
 // Hardcoded Viam BLE UUIDs known by both this code and SOCKS forwarder code.
 const viamSvcUUID = '79cf4eca-116a-4ded-8426-fb83e53bc1d7';
@@ -125,6 +126,8 @@ const viamSocksProxyNameCharUUID = '918ce61c-199f-419e-b6d5-59883a0049d8';
 
 // Give some BLE operations a few retries for resiliency.
 const numRetries = 3;
+
+var bridgeEstablished = false;
 
 // Stores BD address -> last tried timestamp
 final Map<String, DateTime> lastTried = HashMap();
@@ -183,6 +186,7 @@ Future<void> listenAndProxySOCKS(Stream<L2CapChannel> chanStream) async {
   logger.i('in healthy and idle state; scanning for devices to proxy traffic from');
 
   chanStream.listen((chan) async {
+    bridgeEstablished = true;
     final thisCount = chanCount++;
     logger.i('BLE-SOCKS bridge established and ready to handle traffic');
     final socksServerProxy = SocksServer();
@@ -286,6 +290,22 @@ Future<void> manageMachine(BleCentral bleCentral, String mobileDevice, machineTo
         }
 
         logger.i('machine to manage knows our name and we will wait for a connection');
+
+        // At this point, if successfully paired, connection establishment should happen immediately after.
+        // Retry if this is not the case 45 seconds from this point.
+        // Primarily to fix that the pairing prompt times out after 30s and does not reappear,
+        // so we do not want to be waiting indefinitely if the user misses it or accidentally cancels.
+        await Future.doWhile(() => Future.delayed(const Duration(seconds: 1))
+                .then((_) => !bridgeEstablished))
+            .timeout(const Duration(seconds: 45), onTimeout: () {
+          try {
+            logger.i('connection establishment timeout, disconnecting periph before retrying...');
+            periph.disconnect();
+          } catch (error) {
+            logger.w('failed to disconnect $periph before retrying: $error');
+          }
+          throw TimeoutException("Connection establishment timeout");
+        });
       }).catchError((error) {
         logger.e('error establishing connection with machine to manage: $error; will try again');
         unawaited(manageMachine(bleCentral, mobileDevice, machineToManage));
