@@ -1,3 +1,9 @@
+socks-forwarder (0.7) viam; urgency=medium
+
+  * Restart if socks::start_forwarder errors
+
+ -- radxa <radxa@rock-4c-plus>  Thu, 16 Oct 2025 16:24:52 +0000
+
 socks-forwarder (0.6) viam; urgency=medium
 
   * Do not crash on inability to parse /etc/viam.json.
