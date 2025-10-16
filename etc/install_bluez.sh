@@ -43,6 +43,8 @@ sudo apt install git
 echo "Installing libbluetooth-dev..."
 sudo apt install libbluetooth-dev
 
+set -e
+
 echo "Cloning bluez..."
 pushd ~
 git clone https://github.com/bluez/bluez.git
