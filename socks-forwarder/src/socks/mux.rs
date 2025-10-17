@@ -179,7 +179,7 @@ impl L2CAPStreamMux {
                     "Writing data packet for 'port' {port} from TCP stream of length {}...",
                     data.len()
                 );
-                trace!("Data in packet to be written is {data:#?}");
+                trace!("Data in packet to be written is {:?}", data);
 
                 let data_packet = Packet::Data { port, data };
                 if let Err(e) = tcp_to_l2cap_send.send(data_packet).await {
@@ -263,7 +263,7 @@ impl L2CAPStreamMux {
                             "Received data packet for 'port' {port} from L2CAP stream of length {}...",
                             data.len()
                         );
-                        trace!("Data in received packet is {data:#?}");
+                        trace!("Data in received packet is {:?}", data);
 
                         if let Err(e) = muxed_stream.writer.write(&data).await {
                             info!(
