@@ -6,6 +6,7 @@ mod mux;
 use anyhow::{anyhow, Result};
 use bluer::l2cap;
 use log::{debug, error, info, warn};
+use std::env;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::time::{self, timeout, Duration};
@@ -14,7 +15,10 @@ use tokio::time::{self, timeout, Duration};
 const PORT: u16 = 1080;
 
 /// Value to set for incoming maximum-transmission-unit on created L2CAP streams.
-const RECV_MTU: u16 = 65535;
+/// Can be overridden with SOCKS_FOWARDER_RECV_MTU environment variable.
+/// In our testing, Rock4C+ on Debian 11 performs best around 32K
+/// and RPI 4B with Debian 12 is best around 8K.
+const DEFAULT_RECV_MTU: u16 = 32768;
 
 /// Starts a forwarder that accepts incoming requests and forwards them over an L2CAP stream
 /// created against the `device` on `psm`. Returns true if main program should go back to
@@ -92,8 +96,12 @@ pub async fn connect_l2cap(device: &bluer::Device, psm: u16) -> Result<l2cap::St
 
     let stream = l2cap::Socket::<l2cap::Stream>::new_stream()?;
 
-    if let Err(e) = stream.set_recv_mtu(RECV_MTU) {
-        error!("Error setting recv mtu value of {RECV_MTU}: {e}");
+    let recv_mtu = env::var("SOCKS_FORWARDER_RECV_MTU")
+        .ok()
+        .and_then(|mtu| mtu.parse::<u16>().ok()) // max is 65535
+        .unwrap_or(DEFAULT_RECV_MTU);
+    if let Err(e) = stream.set_recv_mtu(recv_mtu) {
+        error!("Error setting recv mtu value of {recv_mtu}: {e}");
     }
 
     debug!("Binding socket");
