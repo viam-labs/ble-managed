@@ -1,3 +1,10 @@
+socks-forwarder (0.8) viam; urgency=medium
+
+  * lower default recv MTU to 32K
+  * environment variable to set recv MTU
+
+ -- radxa <radxa@rock-4c-plus>  Fri, 24 Oct 2025 15:47:34 +0000
+
 socks-forwarder (0.7) viam; urgency=medium
 
   * Restart if socks::start_forwarder errors
