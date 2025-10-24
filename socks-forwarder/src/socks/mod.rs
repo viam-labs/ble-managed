@@ -11,6 +11,8 @@ use tokio::net::TcpListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::time::{self, timeout, Duration};
 
+use crate::env::RECV_MTU_OVERRIDE_ENV_VAR;
+
 /// The port on which to start the listening for traffic to forward.
 const PORT: u16 = 1080;
 
@@ -96,7 +98,7 @@ pub async fn connect_l2cap(device: &bluer::Device, psm: u16) -> Result<l2cap::St
 
     let stream = l2cap::Socket::<l2cap::Stream>::new_stream()?;
 
-    let recv_mtu = env::var("SOCKS_FORWARDER_RECV_MTU")
+    let recv_mtu = env::var(RECV_MTU_OVERRIDE_ENV_VAR)
         .ok()
         .and_then(|mtu| mtu.parse::<u16>().ok()) // max is 65535
         .unwrap_or(DEFAULT_RECV_MTU);

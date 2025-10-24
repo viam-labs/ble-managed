@@ -17,6 +17,9 @@ const ADVERTISED_BLE_NAME_FP: &'static str = "/etc/advertised_ble_name.txt";
 /// Default advertised BLE name if none is specified at `ADVERSTISED_BLE_NAME_FILE`.
 const DEFAULT_ADVERTISED_BLE_NAME: &'static str = "Viam SOCKS forwarder";
 
+/// Environment variable name to override the default recv MTU.
+pub const RECV_MTU_OVERRIDE_ENV_VAR: &'static str = "SOCKS_FORWARDER_RECV_MTU";
+
 #[derive(Deserialize)]
 struct ViamCloudConfig {
     cloud: Cloud,
